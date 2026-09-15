@@ -21,6 +21,17 @@ def get_connection():
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
+def compute_commission(rule, amount):
+    """Single source of truth for commission math, driven by services.commission_rule."""
+    if rule == "flat100":
+        return 100
+    elif rule == "full":
+        return int(amount)
+    elif rule == "none":
+        return 0
+    else:  # 'standard'
+        return int(round(amount * 0.30))
+
 # ====================== CREATE TABLES (first time only) ======================
 def init_db():
     conn = get_connection()
@@ -60,9 +71,14 @@ def init_db():
     CREATE TABLE IF NOT EXISTS services (
         service_id SERIAL PRIMARY KEY,
         name TEXT UNIQUE NOT NULL,
-        is_package INTEGER DEFAULT 0
+        is_package INTEGER DEFAULT 0,
+        commission_rule TEXT DEFAULT 'standard',
+        is_adjustment INTEGER DEFAULT 0
     );
     """)
+    # Backfill for databases created before these columns existed
+    cursor.execute("ALTER TABLE services ADD COLUMN IF NOT EXISTS commission_rule TEXT DEFAULT 'standard'")
+    cursor.execute("ALTER TABLE services ADD COLUMN IF NOT EXISTS is_adjustment INTEGER DEFAULT 0")
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS prices (
@@ -94,9 +110,12 @@ def init_db():
         wash_service_id SERIAL PRIMARY KEY,
         wash_id INTEGER REFERENCES washes(wash_id) ON DELETE CASCADE,
         service_id INTEGER REFERENCES services(service_id),
-        amount INTEGER NOT NULL
+        amount INTEGER NOT NULL,
+        commission_amount INTEGER DEFAULT 0
     );
     """)
+    # Backfill for databases created before this column existed
+    cursor.execute("ALTER TABLE wash_services ADD COLUMN IF NOT EXISTS commission_amount INTEGER DEFAULT 0")
 
     # Insert default admin if not exists
     cursor.execute("SELECT 1 FROM users WHERE username = %s", ("admin",))
@@ -116,18 +135,27 @@ def init_db():
     for v in vehicles:
         cursor.execute("INSERT INTO vehicle_types (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (v,))
 
-    # Default services
+    # Default services: (name, is_package, commission_rule, is_adjustment)
+    # commission_rule: 'standard' = 30%, 'flat100' = flat KSh100, 'full' = 100% (tips)
     services = [
-        ("General Wash", 0),
-        ("General + Vacuum", 1),
-        ("Vacuum", 0),
-        ("Outside Wash", 0),
-        ("Underwash", 0),
-        ("Engine Steaming", 0),
-        ("Carpet Wash", 0)
+        ("General Wash", 0, "standard", 0),
+        ("General + Vacuum", 1, "standard", 0),
+        ("Vacuum", 0, "standard", 0),
+        ("Outside Wash", 0, "standard", 0),
+        ("Underwash", 0, "flat100", 0),
+        ("Engine Steaming", 0, "flat100", 0),
+        ("Carpet Wash", 0, "standard", 0),
+        ("Extra Payment", 0, "standard", 1),
+        ("Staff Tip", 0, "full", 1),
     ]
-    for name, is_pkg in services:
-        cursor.execute("INSERT INTO services (name, is_package) VALUES (%s, %s) ON CONFLICT (name) DO NOTHING", (name, is_pkg))
+    for name, is_pkg, rule, is_adj in services:
+        cursor.execute("""
+            INSERT INTO services (name, is_package, commission_rule, is_adjustment)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (name) DO UPDATE SET
+                commission_rule = EXCLUDED.commission_rule,
+                is_adjustment = EXCLUDED.is_adjustment
+        """, (name, is_pkg, rule, is_adj))
 
     conn.commit()
     cursor.close()
@@ -264,7 +292,7 @@ def record_wash():
         service_details = []
         for sid in selected_services:
             cursor.execute("""
-                SELECT s.service_id, s.name, p.amount
+                SELECT s.service_id, s.name, s.commission_rule, p.amount
                 FROM prices p
                 JOIN services s ON p.service_id = s.service_id
                 WHERE p.vehicle_type_id = %s AND s.service_id = %s
@@ -273,6 +301,8 @@ def record_wash():
             if row:
                 total += row["amount"]
                 service_details.append(row)
+            else:
+                flash(f"Warning: no price is set for one of the selected services on this vehicle type — it was skipped and NOT charged. Please set it under Change Prices.", "danger")
         try:
             cursor.execute("""
                 INSERT INTO washes (registration_number, staff_id, vehicle_type_id, total_amount, payment_method)
@@ -282,12 +312,7 @@ def record_wash():
             wash_id = cursor.fetchone()["wash_id"]
 
             for s in service_details:
-                # Calculate commission
-                service_name = s["name"].lower()
-                if "underwash" in service_name or "steaming" in service_name:
-                    commission = 100
-                else:
-                    commission = int(round(s["amount"] * 0.30))
+                commission = compute_commission(s["commission_rule"], s["amount"])
 
                 cursor.execute("""
                     INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
@@ -738,31 +763,111 @@ def edit_wash(wash_id):
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+    cursor.execute("SELECT * FROM washes WHERE wash_id = %s", (wash_id,))
+    existing_wash = cursor.fetchone()
+    if not existing_wash:
+        cursor.close()
+        conn.close()
+        flash("Wash not found.", "danger")
+        return redirect(url_for("search"))
+
     if request.method == "POST":
         reg = request.form.get("registration", "").strip().upper()
         staff_id = request.form.get("staff_id")
         vehicle_type_id = request.form.get("vehicle_type_id")
         payment_method = request.form.get("payment_method")
-        total_amount = request.form.get("total_amount")
+        extra_amount_raw = request.form.get("extra_amount", "").strip()
+        extra_type = request.form.get("extra_type", "none")  # 'none' | 'payment' | 'tip'
+        extra_note = request.form.get("extra_note", "").strip()
 
         try:
+            extra_amount = int(extra_amount_raw) if extra_amount_raw else 0
+        except ValueError:
+            extra_amount = 0
+
+        old_vehicle_type_id = str(existing_wash["vehicle_type_id"])
+        vehicle_changed = str(vehicle_type_id) != old_vehicle_type_id
+
+        try:
+            # 1. Reprice existing (non-adjustment) services if the vehicle type changed
             cursor.execute("""
-                UPDATE washes 
+                SELECT ws.wash_service_id, ws.service_id, ws.amount, s.name, s.commission_rule
+                FROM wash_services ws
+                JOIN services s ON ws.service_id = s.service_id
+                WHERE ws.wash_id = %s AND s.is_adjustment = 0
+            """, (wash_id,))
+            service_rows = cursor.fetchall()
+
+            if vehicle_changed:
+                for row in service_rows:
+                    cursor.execute("""
+                        SELECT amount FROM prices
+                        WHERE vehicle_type_id = %s AND service_id = %s
+                    """, (vehicle_type_id, row["service_id"]))
+                    price_row = cursor.fetchone()
+                    if price_row:
+                        new_amount = price_row["amount"]
+                        new_commission = compute_commission(row["commission_rule"], new_amount)
+                        cursor.execute("""
+                            UPDATE wash_services
+                            SET amount = %s, commission_amount = %s
+                            WHERE wash_service_id = %s
+                        """, (new_amount, new_commission, row["wash_service_id"]))
+                    else:
+                        flash(f"No price set for '{row['name']}' under the new vehicle type — kept its previous price.", "danger")
+
+            # 2. Remove any existing adjustment line (old Extra Payment / Staff Tip) for this wash
+            cursor.execute("""
+                DELETE FROM wash_services
+                WHERE wash_id = %s AND service_id IN (
+                    SELECT service_id FROM services WHERE is_adjustment = 1
+                )
+            """, (wash_id,))
+
+            # 3. Insert the new adjustment line, if any
+            if extra_amount > 0 and extra_type in ("payment", "tip"):
+                service_name = "Extra Payment" if extra_type == "payment" else "Staff Tip"
+                cursor.execute("SELECT service_id, commission_rule FROM services WHERE name = %s", (service_name,))
+                adj_service = cursor.fetchone()
+                if adj_service:
+                    commission = compute_commission(adj_service["commission_rule"], extra_amount)
+                    cursor.execute("""
+                        INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
+                        VALUES (%s, %s, %s, %s)
+                    """, (wash_id, adj_service["service_id"], extra_amount, commission))
+
+            # 4. Recompute total_amount from the actual line items — never typed directly
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) as total FROM wash_services WHERE wash_id = %s", (wash_id,))
+            new_total = cursor.fetchone()["total"]
+
+            note_parts = []
+            if existing_wash.get("notes"):
+                note_parts.append(existing_wash["notes"])
+            if extra_note:
+                note_parts.append(extra_note)
+            combined_notes = " | ".join(note_parts) if note_parts else None
+
+            cursor.execute("""
+                UPDATE washes
                 SET registration_number = %s,
                     staff_id = %s,
                     vehicle_type_id = %s,
                     payment_method = %s,
-                    total_amount = %s
+                    total_amount = %s,
+                    notes = %s
                 WHERE wash_id = %s
-            """, (reg, staff_id, vehicle_type_id, payment_method, total_amount, wash_id))
+            """, (reg, staff_id, vehicle_type_id, payment_method, new_total, combined_notes, wash_id))
+
             conn.commit()
-            flash("Wash updated successfully!", "success")
+            flash("Wash updated successfully! Services, commissions, and total were recalculated.", "success")
             cursor.close()
             conn.close()
             return redirect(url_for("wash_details", wash_id=wash_id))
         except Exception as e:
-            flash(f"Error: {e}", "danger")
+            conn.rollback()
+            flash(f"Error updating wash: {e}", "danger")
 
+    # ---- GET (or POST that hit an error and fell through) ----
     cursor.execute("""
         SELECT w.*, s.full_name as staff_name, vt.name as vehicle_name
         FROM washes w
@@ -772,11 +877,16 @@ def edit_wash(wash_id):
     """, (wash_id,))
     wash = cursor.fetchone()
 
-    if not wash:
-        cursor.close()
-        conn.close()
-        flash("Wash not found.", "danger")
-        return redirect(url_for("search"))
+    cursor.execute("""
+        SELECT s.name, ws.amount, s.is_adjustment
+        FROM wash_services ws
+        JOIN services s ON ws.service_id = s.service_id
+        WHERE ws.wash_id = %s
+        ORDER BY s.is_adjustment, s.service_id
+    """, (wash_id,))
+    all_services = cursor.fetchall()
+    current_services = [r for r in all_services if not r["is_adjustment"]]
+    existing_extra = next((r for r in all_services if r["is_adjustment"]), None)
 
     cursor.execute("SELECT staff_id, full_name FROM staff WHERE is_active = 1 ORDER BY full_name")
     staff = cursor.fetchall()
@@ -787,7 +897,8 @@ def edit_wash(wash_id):
     cursor.close()
     conn.close()
 
-    return render_template("edit_wash.html", wash=wash, staff=staff, vehicle_types=vehicle_types)
+    return render_template("edit_wash.html", wash=wash, staff=staff, vehicle_types=vehicle_types,
+                           current_services=current_services, existing_extra=existing_extra)
 
 
 @app.route("/delete-wash/<int:wash_id>")

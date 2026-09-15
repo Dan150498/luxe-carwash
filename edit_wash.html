@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Wash - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:650px;">
+    <h2>Edit Wash #{{ wash.wash_id }}</h2>
+
+    <form method="POST">
+        <div class="form-group">
+            <label>Registration Number</label>
+            <input type="text" name="registration" value="{{ wash.registration_number }}" required
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px; text-transform:uppercase;">
+        </div>
+
+        <div class="form-group">
+            <label>Staff</label>
+            <select name="staff_id" required
+                    style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                {% for s in staff %}
+                    <option value="{{ s.staff_id }}" {% if s.staff_id == wash.staff_id %}selected{% endif %}>
+                        {{ s.full_name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Vehicle Type</label>
+            <select name="vehicle_type_id"
+                    style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                {% for v in vehicle_types %}
+                    <option value="{{ v.vehicle_type_id }}" {% if v.vehicle_type_id == wash.vehicle_type_id %}selected{% endif %}>
+                        {{ v.name }}
+                    </option>
+                {% endfor %}
+            </select>
+            <p style="color:#888; font-size:0.85rem; margin-top:6px;">
+                Changing this will automatically reprice the services below and recalculate commission.
+            </p>
+        </div>
+
+        <div class="form-group">
+            <label>Payment Method</label>
+            <select name="payment_method" required
+                    style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                <option value="Cash" {% if wash.payment_method == 'Cash' %}selected{% endif %}>Cash</option>
+                <option value="M-Pesa" {% if wash.payment_method == 'M-Pesa' %}selected{% endif %}>M-Pesa</option>
+            </select>
+        </div>
+
+        <hr style="border-color:#333; margin:20px 0;">
+
+        <h3 style="color:#d4af37; font-size:1.05rem; margin-bottom:12px;">Services on this wash</h3>
+        {% if current_services %}
+            <ul style="list-style:none; padding:0; margin-bottom:10px;">
+                {% for s in current_services %}
+                <li style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #222;">
+                    <span>{{ s.name }}</span>
+                    <span style="color:#d4af37;">KSh {{ s.amount }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p style="color:#888;">No services recorded.</p>
+        {% endif %}
+        <p style="color:#888; font-size:0.85rem;">
+            To change which services were done, delete this wash and record it again.
+        </p>
+
+        <hr style="border-color:#333; margin:20px 0;">
+
+        <h3 style="color:#d4af37; font-size:1.05rem; margin-bottom:12px;">Extra Amount</h3>
+        <p style="color:#888; font-size:0.85rem; margin-bottom:12px;">
+            Use this if the customer paid more than the standard price — either as extra
+            payment for the wash (commissioned like any service) or as a tip for the staff
+            member (100% goes to them).
+        </p>
+
+        <div class="form-group">
+            <label>Extra Amount (KSh)</label>
+            <input type="number" name="extra_amount" min="0"
+                   value="{{ existing_extra.amount if existing_extra else 0 }}"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Extra Type</label>
+            <select name="extra_type"
+                    style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                <option value="none" {% if not existing_extra %}selected{% endif %}>None</option>
+                <option value="payment" {% if existing_extra and existing_extra.name == 'Extra Payment' %}selected{% endif %}>
+                    Additional Payment (commissioned at standard rate)
+                </option>
+                <option value="tip" {% if existing_extra and existing_extra.name == 'Staff Tip' %}selected{% endif %}>
+                    Staff Tip (100% to staff)
+                </option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Note (optional)</label>
+            <input type="text" name="extra_note" placeholder="e.g. Customer rounded up / left a tip"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <hr style="border-color:#333; margin:20px 0;">
+
+        <p style="color:#888; font-size:0.9rem;">
+            Current total: <strong style="color:#d4af37;">KSh {{ wash.total_amount }}</strong>
+            — the new total will be recalculated automatically when you save.
+        </p>
+
+        <button type="submit" class="btn" style="margin-top:15px;">Update Wash</button>
+        <a href="{{ url_for('wash_details', wash_id=wash.wash_id) }}" class="btn" style="background:#333; margin-left:10px;">Cancel</a>
+    </form>
+</div>
+{% endblock %}
