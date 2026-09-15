@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Commissions - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Daily Staff Commissions</h2>
+
+    <form method="GET" style="margin-bottom:25px;">
+        <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Select Date</label>
+                <input type="date" name="date" value="{{ selected_date }}"
+                       style="padding:10px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <button type="submit" class="btn">View</button>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Staff Name</th>
+                    <th>Washes</th>
+                    <th>Commission (KSh)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in results %}
+                <tr>
+                    <td>{{ r.full_name }}</td>
+                    <td>{{ r.total_washes }}</td>
+                    <td style="color:#d4af37; font-weight:600;">{{ r.total_commission }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" style="color:#888;">No data for this date</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div style="margin-top:25px; text-align:right; font-size:1.2rem;">
+        <strong>Total Commission: <span style="color:#d4af37;">KSh {{ grand_total }}</span></strong>
+    </div>
+</div>
+{% endblock %}

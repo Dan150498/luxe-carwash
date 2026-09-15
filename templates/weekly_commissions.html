@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Weekly Commissions - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Weekly Staff Commissions (Saturday Payout)</h2>
+
+    <form method="GET" style="margin-bottom:25px;">
+        <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label>From Date</label>
+                <input type="date" name="start" value="{{ start_date }}"
+                       style="padding:10px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label>To Date</label>
+                <input type="date" name="end" value="{{ end_date }}"
+                       style="padding:10px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <button type="submit" class="btn">Generate</button>
+        </div>
+    </form>
+
+    <p style="color:#888; margin-bottom:15px;">
+        Period: <strong>{{ start_date }}</strong> to <strong>{{ end_date }}</strong>
+    </p>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Staff Name</th>
+                    <th>Total Washes</th>
+                    <th>Total Commission (KSh)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in results %}
+                <tr>
+                    <td>{{ r.full_name }}</td>
+                    <td>{{ r.total_washes }}</td>
+                    <td style="color:#d4af37; font-weight:600;">{{ r.total_commission }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" style="color:#888;">No commissions in this period</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div style="margin-top:25px; text-align:right; font-size:1.3rem;">
+        <strong>Grand Total to Pay: <span style="color:#d4af37;">KSh {{ grand_total }}</span></strong>
+    </div>
+</div>
+{% endblock %}
