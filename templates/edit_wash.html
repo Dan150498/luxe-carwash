@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Wash - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:600px;">
+    <h2>Edit Wash #{{ wash.wash_id }}</h2>
+
+    <form method="POST">
+        <div class="form-group">
+            <label>Registration Number</label>
+            <input type="text" name="registration" value="{{ wash.registration_number }}" required
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px; text-transform:uppercase;">
+        </div>
+
+        <div class="form-group">
+            <label>Staff</label>
+            <select name="staff_id" required
+                    style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                {% for s in staff %}
+                    <option value="{{ s.staff_id }}" {% if s.staff_id == wash.staff_id %}selected{% endif %}>
+                        {{ s.full_name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Vehicle Type</label>
+            <select name="vehicle_type_id" required
+                    style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                {% for v in vehicle_types %}
+                    <option value="{{ v.vehicle_type_id }}" {% if v.vehicle_type_id == wash.vehicle_type_id %}selected{% endif %}>
+                        {{ v.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Payment Method</label>
+            <select name="payment_method" required
+                    style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                <option value="Cash" {% if wash.payment_method == 'Cash' %}selected{% endif %}>Cash</option>
+                <option value="M-Pesa" {% if wash.payment_method == 'M-Pesa' %}selected{% endif %}>M-Pesa</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Total Amount (KSh)</label>
+            <input type="number" name="total_amount" value="{{ wash.total_amount }}" required
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <button type="submit" class="btn">Update Wash</button>
+        <a href="{{ url_for('wash_details', wash_id=wash.wash_id) }}" class="btn" style="background:#333; margin-left:10px;">Cancel</a>
+    </form>
+</div>
+{% endblock %}
