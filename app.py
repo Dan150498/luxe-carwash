@@ -709,7 +709,21 @@ def add_service():
 
     return redirect(url_for("manage_types_services"))
 
-    @app.route("/edit-wash/<int:wash_id>", methods=["GET", "POST"])
+   
+
+# ====================== INITIALIZE DB ON STARTUP ======================
+@app.before_request
+def before_first_request():
+    if not getattr(app, "db_initialized", False):
+        try:
+            init_db()
+            app.db_initialized = True
+        except Exception as e:
+            print(f"DB init error: {e}")
+
+# ====================== RUN ======================
+
+ @app.route("/edit-wash/<int:wash_id>", methods=["GET", "POST"])
 def edit_wash(wash_id):
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
@@ -789,16 +803,5 @@ def delete_wash(wash_id):
 
     return redirect(url_for("search"))
 
-# ====================== INITIALIZE DB ON STARTUP ======================
-@app.before_request
-def before_first_request():
-    if not getattr(app, "db_initialized", False):
-        try:
-            init_db()
-            app.db_initialized = True
-        except Exception as e:
-            print(f"DB init error: {e}")
-
-# ====================== RUN ======================
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
