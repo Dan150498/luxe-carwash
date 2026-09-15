@@ -282,18 +282,18 @@ def record_wash():
             
             wash_id = cursor.fetchone()["wash_id"]
 
-    for s in service_details:
+for s in service_details:
     # Calculate commission accurately
-            service_name = s["name"].lower()
-        if "underwash" in service_name or "steaming" in service_name:
-            commission = 100
-        else:
-            commission = int(round(s["amount"] * 0.30))  # 30%
+    service_name = s["name"].lower()
+    if "underwash" in service_name or "steaming" in service_name:
+        commission = 100
+     else:
+        commission = int(round(s["amount"] * 0.30))  # 30%
 
-        cursor.execute("""
-            INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
-                VALUES (%s, %s, %s, %s)
-                """, (wash_id, s["service_id"], s["amount"], commission))
+    cursor.execute("""
+        INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
+        VALUES (%s, %s, %s, %s)
+    """, (wash_id, s["service_id"], s["amount"], commission))
 
             conn.commit()
 
