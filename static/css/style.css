@@ -6,6 +6,7 @@
     --gold-dark: #b8960c;
     --white: #f5f5f5;
     --gray: #888;
+    --sidebar-width: 260px;
 }
 
 * {
@@ -19,10 +20,123 @@ body {
     background-color: var(--black);
     color: var(--white);
     min-height: 100vh;
-    line-height: 1.5;
 }
 
-/* ===== LOGIN PAGE ===== */
+/* ===== LAYOUT ===== */
+.layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+    width: var(--sidebar-width);
+    background: var(--dark);
+    border-right: 2px solid var(--gold);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 1000;
+    transition: transform 0.3s ease;
+}
+
+.sidebar-brand {
+    padding: 25px 20px;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 1px;
+    border-bottom: 1px solid #333;
+    text-align: center;
+}
+
+.sidebar-nav {
+    flex: 1;
+    padding: 20px 0;
+    overflow-y: auto;
+}
+
+.nav-item {
+    display: block;
+    padding: 13px 25px;
+    color: var(--gold-light);
+    text-decoration: none;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+}
+
+.nav-item:hover {
+    background: rgba(212, 175, 55, 0.1);
+    color: var(--gold);
+    border-left-color: var(--gold);
+}
+
+.sidebar-footer {
+    padding: 20px;
+    border-top: 1px solid #333;
+}
+
+.user-name {
+    color: var(--gray);
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+}
+
+.logout-btn {
+    display: block;
+    text-align: center;
+    padding: 10px;
+    background: rgba(220, 53, 69, 0.15);
+    color: #ff6b6b;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.logout-btn:hover {
+    background: rgba(220, 53, 69, 0.3);
+}
+
+/* ===== MAIN CONTENT ===== */
+.main-content {
+    flex: 1;
+    margin-left: var(--sidebar-width);
+    min-height: 100vh;
+}
+
+.topbar {
+    background: var(--dark);
+    border-bottom: 1px solid #333;
+    padding: 15px 25px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.menu-toggle {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--gold);
+    font-size: 1.5rem;
+    cursor: pointer;
+}
+
+.topbar-title {
+    color: var(--gold-light);
+    font-size: 1.1rem;
+}
+
+.content {
+    padding: 25px;
+    max-width: 1200px;
+}
+
+/* ===== LOGIN ===== */
 .login-container {
     display: flex;
     justify-content: center;
@@ -36,7 +150,7 @@ body {
     background: var(--dark);
     border: 2px solid var(--gold);
     border-radius: 12px;
-    padding: 30px 25px;
+    padding: 40px 30px;
     width: 100%;
     max-width: 420px;
     box-shadow: 0 0 30px rgba(212, 175, 55, 0.25);
@@ -45,7 +159,7 @@ body {
 .login-box h1 {
     text-align: center;
     color: var(--gold);
-    font-size: 1.8rem;
+    font-size: 1.9rem;
     margin-bottom: 8px;
     letter-spacing: 2px;
 }
@@ -53,8 +167,7 @@ body {
 .login-box .subtitle {
     text-align: center;
     color: var(--gray);
-    margin-bottom: 25px;
-    font-size: 0.95rem;
+    margin-bottom: 30px;
 }
 
 .form-group {
@@ -97,7 +210,6 @@ body {
     cursor: pointer;
     text-decoration: none;
     text-align: center;
-    transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .btn:hover {
@@ -110,7 +222,7 @@ body {
 }
 
 .alert {
-    padding: 12px;
+    padding: 12px 16px;
     border-radius: 6px;
     margin-bottom: 20px;
     text-align: center;
@@ -134,144 +246,91 @@ body {
     color: #66d9ef;
 }
 
-/* ===== NAVBAR ===== */
-.navbar {
-    background: var(--dark);
-    border-bottom: 2px solid var(--gold);
-    padding: 12px 16px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.navbar .brand {
-    color: var(--gold);
-    font-size: 1.3rem;
-    font-weight: 700;
-    letter-spacing: 1px;
-}
-
-.nav-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 14px;
-    align-items: center;
-}
-
-.nav-links a {
-    color: var(--gold-light);
-    text-decoration: none;
-    font-size: 0.9rem;
-}
-
-.nav-links a:hover {
-    color: var(--gold);
-}
-
-/* ===== CONTENT ===== */
-.content {
-    max-width: 1100px;
-    margin: 20px auto;
-    padding: 0 16px;
-}
-
+/* ===== CARDS & STATS ===== */
 .card {
     background: var(--dark);
     border: 1px solid #333;
     border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 20px;
+    padding: 25px;
+    margin-bottom: 25px;
 }
 
 .card h2 {
     color: var(--gold);
-    margin-bottom: 18px;
-    font-size: 1.3rem;
+    margin-bottom: 20px;
+    font-size: 1.35rem;
 }
 
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 15px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 18px;
 }
 
 .stat-box {
     background: #111;
     border: 1px solid var(--gold-dark);
     border-radius: 8px;
-    padding: 18px 12px;
+    padding: 20px 15px;
     text-align: center;
 }
 
 .stat-box .number {
-    font-size: 1.6rem;
+    font-size: 1.7rem;
     color: var(--gold);
     font-weight: 700;
 }
 
 .stat-box .label {
     color: var(--gray);
-    margin-top: 5px;
+    margin-top: 6px;
     font-size: 0.85rem;
 }
 
 /* ===== TABLES ===== */
+.table-responsive {
+    overflow-x: auto;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.9rem;
-}
-
-th, td {
-    padding: 10px 8px;
-    text-align: left;
+    font-size: 0.92rem;
 }
 
 th {
     background: #111;
     color: var(--gold);
+    padding: 12px 10px;
+    text-align: left;
     border-bottom: 1px solid #333;
 }
 
 td {
+    padding: 11px 10px;
     border-bottom: 1px solid #222;
 }
 
-/* Make tables scrollable on mobile */
-.table-responsive {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-}
-
-/* ===== MOBILE IMPROVEMENTS ===== */
-@media (max-width: 600px) {
-    .navbar {
-        flex-direction: column;
-        align-items: flex-start;
+/* ===== MOBILE ===== */
+@media (max-width: 768px) {
+    .sidebar {
+        transform: translateX(-100%);
     }
 
-    .nav-links {
-        width: 100%;
-        margin-top: 8px;
+    .sidebar.open {
+        transform: translateX(0);
     }
 
-    .login-box {
-        padding: 25px 18px;
+    .main-content {
+        margin-left: 0;
     }
 
-    .login-box h1 {
-        font-size: 1.5rem;
+    .menu-toggle {
+        display: block;
     }
 
-    .card {
+    .content {
         padding: 16px;
-    }
-
-    .btn {
-        padding: 11px 18px;
-        font-size: 0.95rem;
     }
 
     .stats-grid {
