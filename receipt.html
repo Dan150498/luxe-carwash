@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Receipt - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:500px; margin:0 auto; border:2px solid #d4af37;">
+    <div style="text-align:center; margin-bottom:25px;">
+        <h2 style="color:#d4af37; letter-spacing:2px;">LUXE CARWASH</h2>
+        <p style="color:#888;">Official Receipt</p>
+    </div>
+
+    <p><strong>Receipt No:</strong> {{ wash_id }}</p>
+    <p><strong>Date:</strong> {{ date.today().strftime('%Y-%m-%d') if date is defined else '' }}</p>
+    <hr style="border-color:#333; margin:15px 0;">
+
+    <p><strong>Registration:</strong> {{ reg }}</p>
+    <p><strong>Vehicle:</strong> {{ vehicle_name }}</p>
+    <p><strong>Washed by:</strong> {{ staff_name }}</p>
+
+    <hr style="border-color:#333; margin:15px 0;">
+    <p style="margin-bottom:8px;"><strong>Services:</strong></p>
+    {% for s in services %}
+        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+            <span>{{ s.name }}</span>
+            <span style="color:#d4af37;">KSh {{ s.amount }}</span>
+        </div>
+    {% endfor %}
+
+    <hr style="border-color:#333; margin:15px 0;">
+    <div style="display:flex; justify-content:space-between; font-size:1.2rem;">
+        <strong>TOTAL</strong>
+        <strong style="color:#d4af37;">KSh {{ total }}</strong>
+    </div>
+    <p style="margin-top:8px;"><strong>Payment:</strong> {{ payment_method }}</p>
+
+    <div style="text-align:center; margin-top:30px; color:#888;">
+        <p>Thank you for choosing Luxe!</p>
+        <p>Drive clean, drive safe</p>
+    </div>
+
+    <div style="text-align:center; margin-top:25px;">
+        <button onclick="window.print()" class="btn">Print Receipt</button>
+        <a href="{{ url_for('record_wash') }}" class="btn" style="background:#333; margin-left:10px;">Record Another</a>
+    </div>
+</div>
+{% endblock %}

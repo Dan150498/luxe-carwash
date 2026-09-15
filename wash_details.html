@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Wash Details - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:650px;">
+    <h2>Wash Details</h2>
+
+    <div style="margin-top:20px;">
+        <p><strong>Wash ID:</strong> {{ wash.wash_id }}</p>
+        <p><strong>Registration:</strong> {{ wash.registration_number }}</p>
+        <p><strong>Staff:</strong> {{ wash.staff_name }}</p>
+        <p><strong>Vehicle:</strong> {{ wash.vehicle_name }}</p>
+        <p><strong>Date:</strong> {{ wash.wash_date }} {{ wash.wash_time }}</p>
+        <p><strong>Payment Method:</strong> {{ wash.payment_method }}</p>
+        <p><strong>Total Amount:</strong> <span style="color:#d4af37;">KSh {{ wash.total_amount }}</span></p>
+    </div>
+
+    <hr style="border-color:#333; margin:25px 0;">
+
+    <h3 style="color:#d4af37; margin-bottom:15px;">Services Done</h3>
+    {% if services %}
+        <ul style="list-style:none; padding:0;">
+            {% for s in services %}
+            <li style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #222;">
+                <span>{{ s.name }}</span>
+                <span style="color:#d4af37;">KSh {{ s.amount }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p style="color:#888;">No services recorded.</p>
+    {% endif %}
+
+    <div style="margin-top:30px;">
+        <a href="{{ url_for('search') }}" class="btn" style="background:#333;">Back to Search</a>
+    </div>
+</div>
+{% endblock %}
