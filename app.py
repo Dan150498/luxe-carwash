@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
+from datetime import date, datetime, timedelta
 import psycopg2
 import psycopg2.extras
 import hashlib
@@ -281,11 +282,18 @@ def record_wash():
             
             wash_id = cursor.fetchone()["wash_id"]
 
-            for s in service_details:
-                cursor.execute("""
-                    INSERT INTO wash_services (wash_id, service_id, amount)
-                    VALUES (%s, %s, %s)
-                """, (wash_id, s["service_id"], s["amount"]))
+    for s in service_details:
+    # Calculate commission accurately
+            service_name = s["name"].lower()
+        if "underwash" in service_name or "steaming" in service_name:
+            commission = 100
+        else:
+            commission = int(round(s["amount"] * 0.30))  # 30%
+
+        cursor.execute("""
+            INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
+                VALUES (%s, %s, %s, %s)
+                """, (wash_id, s["service_id"], s["amount"], commission))
 
             conn.commit()
 
@@ -822,6 +830,83 @@ def setup_commission():
     cursor.close()
     conn.close()
     return message
+
+@app.route("/commissions/daily")
+def daily_commissions():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    selected_date = request.args.get("date") or date.today().isoformat()
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("""
+        SELECT 
+            s.staff_id,
+            s.full_name,
+            COUNT(DISTINCT w.wash_id) as total_washes,
+            COALESCE(SUM(ws.commission_amount), 0) as total_commission
+        FROM staff s
+        LEFT JOIN washes w ON s.staff_id = w.staff_id AND w.wash_date = %s
+        LEFT JOIN wash_services ws ON w.wash_id = ws.wash_id
+        WHERE s.is_active = 1
+        GROUP BY s.staff_id, s.full_name
+        ORDER BY total_commission DESC
+    """, (selected_date,))
+    
+    results = cursor.fetchall()
+    grand_total = sum(r["total_commission"] for r in results)
+    cursor.close()
+    conn.close()
+
+    return render_template("daily_commissions.html",
+                           results=results,
+                           selected_date=selected_date,
+                           grand_total=grand_total)
+
+
+@app.route("/commissions/weekly")
+def weekly_commissions():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    # Default to current week (Monday to Sunday)
+    today = date.today()
+    start_of_week = today - timedelta(days=today.weekday())  # Monday
+    end_of_week = start_of_week + timedelta(days=6)          # Sunday
+
+    start_date = request.args.get("start") or start_of_week.isoformat()
+    end_date = request.args.get("end") or end_of_week.isoformat()
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("""
+        SELECT 
+            s.staff_id,
+            s.full_name,
+            COUNT(DISTINCT w.wash_id) as total_washes,
+            COALESCE(SUM(ws.commission_amount), 0) as total_commission
+        FROM staff s
+        LEFT JOIN washes w ON s.staff_id = w.staff_id 
+            AND w.wash_date BETWEEN %s AND %s
+        LEFT JOIN wash_services ws ON w.wash_id = ws.wash_id
+        WHERE s.is_active = 1
+        GROUP BY s.staff_id, s.full_name
+        ORDER BY total_commission DESC
+    """, (start_date, end_date))
+    
+    results = cursor.fetchall()
+    grand_total = sum(r["total_commission"] for r in results)
+    cursor.close()
+    conn.close()
+
+    return render_template("weekly_commissions.html",
+                           results=results,
+                           start_date=start_date,
+                           end_date=end_date,
+                           grand_total=grand_total)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
