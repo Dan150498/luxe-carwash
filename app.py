@@ -723,7 +723,7 @@ def before_first_request():
 
 # ====================== RUN ======================
 
- @app.route("/edit-wash/<int:wash_id>", methods=["GET", "POST"])
+@app.route("/edit-wash/<int:wash_id>", methods=["GET", "POST"])
 def edit_wash(wash_id):
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
@@ -756,7 +756,6 @@ def edit_wash(wash_id):
         except Exception as e:
             flash(f"Error: {e}", "danger")
 
-    # GET request - show the form
     cursor.execute("""
         SELECT w.*, s.full_name as staff_name, vt.name as vehicle_name
         FROM washes w
