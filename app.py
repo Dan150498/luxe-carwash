@@ -709,6 +709,86 @@ def add_service():
 
     return redirect(url_for("manage_types_services"))
 
+    @app.route("/edit-wash/<int:wash_id>", methods=["GET", "POST"])
+def edit_wash(wash_id):
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        reg = request.form.get("registration", "").strip().upper()
+        staff_id = request.form.get("staff_id")
+        vehicle_type_id = request.form.get("vehicle_type_id")
+        payment_method = request.form.get("payment_method")
+        total_amount = request.form.get("total_amount")
+
+        try:
+            cursor.execute("""
+                UPDATE washes 
+                SET registration_number = %s,
+                    staff_id = %s,
+                    vehicle_type_id = %s,
+                    payment_method = %s,
+                    total_amount = %s
+                WHERE wash_id = %s
+            """, (reg, staff_id, vehicle_type_id, payment_method, total_amount, wash_id))
+            conn.commit()
+            flash("Wash updated successfully!", "success")
+            cursor.close()
+            conn.close()
+            return redirect(url_for("wash_details", wash_id=wash_id))
+        except Exception as e:
+            flash(f"Error: {e}", "danger")
+
+    # GET request - show the form
+    cursor.execute("""
+        SELECT w.*, s.full_name as staff_name, vt.name as vehicle_name
+        FROM washes w
+        JOIN staff s ON w.staff_id = s.staff_id
+        JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
+        WHERE w.wash_id = %s
+    """, (wash_id,))
+    wash = cursor.fetchone()
+
+    if not wash:
+        cursor.close()
+        conn.close()
+        flash("Wash not found.", "danger")
+        return redirect(url_for("search"))
+
+    cursor.execute("SELECT staff_id, full_name FROM staff WHERE is_active = 1 ORDER BY full_name")
+    staff = cursor.fetchall()
+
+    cursor.execute("SELECT vehicle_type_id, name FROM vehicle_types ORDER BY vehicle_type_id")
+    vehicle_types = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template("edit_wash.html", wash=wash, staff=staff, vehicle_types=vehicle_types)
+
+
+@app.route("/delete-wash/<int:wash_id>")
+def delete_wash(wash_id):
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM wash_services WHERE wash_id = %s", (wash_id,))
+        cursor.execute("DELETE FROM washes WHERE wash_id = %s", (wash_id,))
+        conn.commit()
+        flash("Wash deleted successfully!", "success")
+    except Exception as e:
+        flash(f"Error deleting wash: {e}", "danger")
+    cursor.close()
+    conn.close()
+
+    return redirect(url_for("search"))
+
 # ====================== INITIALIZE DB ON STARTUP ======================
 @app.before_request
 def before_first_request():
