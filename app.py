@@ -802,5 +802,26 @@ def delete_wash(wash_id):
 
     return redirect(url_for("search"))
 
+
+@app.route("/setup-commission")
+def setup_commission():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            ALTER TABLE wash_services 
+            ADD COLUMN IF NOT EXISTS commission_amount INTEGER DEFAULT 0
+        """)
+        conn.commit()
+        message = "Commission column added successfully!"
+    except Exception as e:
+        message = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return message
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
