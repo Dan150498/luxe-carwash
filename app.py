@@ -11,6 +11,11 @@ from io import BytesIO
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-in-production")
 
+from datetime import timedelta
+
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=6)  # session expires after 6 hours
+app.config['SESSION_REFRESH_EACH_REQUEST'] = True
+
 # ====================== DATABASE ======================
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -195,6 +200,7 @@ def login():
             session["full_name"] = user["full_name"]
             session["role"] = user["role"]
             flash(f"Welcome, {user['full_name']}!", "success")
+            session.permanent = True
             
             if user["role"] == "admin":
                 return redirect(url_for("dashboard"))
@@ -329,7 +335,8 @@ def record_wash():
             conn.rollback()
             cursor.close()
             conn.close()
-            flash(f"Error saving wash: {e}", "danger")
+            flash("Something went wrong. Please try again or contact the administrator.", "danger")
+print(f"Error: {e}")   # this still logs the real error for you
             return render_template("record_wash.html", staff=staff, vehicle_types=vehicle_types)
 
     cursor.close()
@@ -682,7 +689,8 @@ def change_prices():
                 conn.commit()
                 flash("Price saved successfully!", "success")
             except Exception as e:
-                flash(f"Error: {e}", "danger")
+                flash("Something went wrong. Please try again or contact the administrator.", "danger")
+print(f"Error: {e}")   # this still logs the real error for you
         else:
             flash("All fields are required.", "danger")
 
@@ -946,7 +954,8 @@ def delete_wash(wash_id):
         conn.commit()
         flash("Wash deleted successfully!", "success")
     except Exception as e:
-        flash(f"Error deleting wash: {e}", "danger")
+       flash("Something went wrong. Please try again or contact the administrator.", "danger")
+print(f"Error: {e}")   # this still logs the real error for you
     cursor.close()
     conn.close()
 
