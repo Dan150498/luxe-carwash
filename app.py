@@ -187,20 +187,27 @@ def login():
         conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
-            SELECT * FROM users 
+            SELECT user_id, username, full_name, role, must_change_password
+            FROM users 
             WHERE username = %s AND password_hash = %s AND is_active = 1
         """, (username, hashed))
         user = cursor.fetchone()
         cursor.close()
         conn.close()
 
-        if user:
+                if user:
             session["user_id"] = user["user_id"]
             session["username"] = user["username"]
             session["full_name"] = user["full_name"]
             session["role"] = user["role"]
-            flash(f"Welcome, {user['full_name']}!", "success")
             session.permanent = True
+
+            # Force password change if required
+            if user.get("must_change_password") == 1:
+                flash("You must change your password before continuing.", "info")
+                return redirect(url_for("change_password"))
+
+            flash(f"Welcome, {user['full_name']}!", "success")
             
             if user["role"] == "admin":
                 return redirect(url_for("dashboard"))
@@ -1261,6 +1268,59 @@ def setup_security():
     conn.close()
     return message
 
+@app.route("/change-password", methods=["GET", "POST"])
+def change_password():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        current_password = request.form.get("current_password", "").strip()
+        new_password = request.form.get("new_password", "").strip()
+        confirm_password = request.form.get("confirm_password", "").strip()
+
+        if not current_password or not new_password or not confirm_password:
+            flash("All fields are required.", "danger")
+            return render_template("change_password.html")
+
+        if new_password != confirm_password:
+            flash("New passwords do not match.", "danger")
+            return render_template("change_password.html")
+
+        if len(new_password) < 6:
+            flash("New password must be at least 6 characters.", "danger")
+            return render_template("change_password.html")
+
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Verify current password
+        cursor.execute("SELECT password_hash FROM users WHERE user_id = %s", (session["user_id"],))
+        user = cursor.fetchone()
+
+        if not user or user["password_hash"] != hash_password(current_password):
+            cursor.close()
+            conn.close()
+            flash("Current password is incorrect.", "danger")
+            return render_template("change_password.html")
+
+        # Update password and clear the force-change flag
+        cursor.execute("""
+            UPDATE users 
+            SET password_hash = %s, must_change_password = 0 
+            WHERE user_id = %s
+        """, (hash_password(new_password), session["user_id"]))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        flash("Password changed successfully!", "success")
+
+        if session["role"] == "admin":
+            return redirect(url_for("dashboard"))
+        else:
+            return redirect(url_for("cashier_home"))
+
+    return render_template("change_password.html")
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
