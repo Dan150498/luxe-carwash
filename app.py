@@ -1322,5 +1322,36 @@ def change_password():
 
     return render_template("change_password.html")
 
+@app.route("/setup-price-requests")
+def setup_price_requests():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS price_change_requests (
+                request_id SERIAL PRIMARY KEY,
+                vehicle_type_id INTEGER REFERENCES vehicle_types(vehicle_type_id),
+                service_id INTEGER REFERENCES services(service_id),
+                current_amount INTEGER,
+                requested_amount INTEGER NOT NULL,
+                requested_by INTEGER REFERENCES users(user_id),
+                requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+                reviewed_by INTEGER REFERENCES users(user_id),
+                reviewed_at TIMESTAMP,
+                admin_note TEXT
+            )
+        """)
+        conn.commit()
+        message = "Price change requests table created successfully!"
+    except Exception as e:
+        message = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return message
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
