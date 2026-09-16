@@ -336,7 +336,7 @@ def record_wash():
             cursor.close()
             conn.close()
             flash("Something went wrong. Please try again or contact the administrator.", "danger")
-print(f"Error: {e}")   # this still logs the real error for you
+            print(f"Error: {e}")   # this still logs the real error for you
             return render_template("record_wash.html", staff=staff, vehicle_types=vehicle_types)
 
     cursor.close()
@@ -690,7 +690,7 @@ def change_prices():
                 flash("Price saved successfully!", "success")
             except Exception as e:
                 flash("Something went wrong. Please try again or contact the administrator.", "danger")
-print(f"Error: {e}")   # this still logs the real error for you
+                print(f"Error: {e}")   # this still logs the real error for you
         else:
             flash("All fields are required.", "danger")
 
@@ -955,7 +955,7 @@ def delete_wash(wash_id):
         flash("Wash deleted successfully!", "success")
     except Exception as e:
        flash("Something went wrong. Please try again or contact the administrator.", "danger")
-print(f"Error: {e}")   # this still logs the real error for you
+       print(f"Error: {e}")   # this still logs the real error for you
     cursor.close()
     conn.close()
 
