@@ -1384,8 +1384,60 @@ def setup_wash_requests():
     conn.close()
     return message
 
-@app.route("/price-approvals", methods=["GET", "POST"])
-def price_approvals():
+@app.route("/request-extra/<int:wash_id>", methods=["GET", "POST"])
+def request_extra(wash_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Get wash details
+    cursor.execute("""
+        SELECT w.*, s.full_name as staff_name, vt.name as vehicle_name
+        FROM washes w
+        JOIN staff s ON w.staff_id = s.staff_id
+        JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
+        WHERE w.wash_id = %s
+    """, (wash_id,))
+    wash = cursor.fetchone()
+
+    if not wash:
+        cursor.close()
+        conn.close()
+        flash("Wash not found.", "danger")
+        return redirect(url_for("search"))
+
+    if request.method == "POST":
+        extra_type = request.form.get("extra_type")
+        extra_amount = request.form.get("extra_amount", "0").strip()
+        extra_note = request.form.get("extra_note", "").strip()
+
+        try:
+            extra_amount = int(extra_amount)
+        except:
+            extra_amount = 0
+
+        if extra_type not in ("payment", "tip") or extra_amount <= 0:
+            flash("Please select type and enter a valid amount.", "danger")
+        else:
+            cursor.execute("""
+                INSERT INTO wash_edit_requests 
+                (wash_id, extra_type, extra_amount, extra_note, requested_by)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (wash_id, extra_type, extra_amount, extra_note, session["user_id"]))
+            conn.commit()
+            flash("Request submitted successfully! Waiting for Admin approval.", "success")
+            cursor.close()
+            conn.close()
+            return redirect(url_for("search"))
+
+    cursor.close()
+    conn.close()
+    return render_template("request_extra.html", wash=wash)
+
+@app.route("/extra-approvals", methods=["GET", "POST"])
+def extra_approvals():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
@@ -1394,36 +1446,48 @@ def price_approvals():
 
     if request.method == "POST":
         request_id = request.form.get("request_id")
-        action = request.form.get("action")  # approve or reject
+        action = request.form.get("action")
         admin_note = request.form.get("admin_note", "").strip()
 
-        cursor.execute("SELECT * FROM price_change_requests WHERE request_id = %s", (request_id,))
+        cursor.execute("SELECT * FROM wash_edit_requests WHERE request_id = %s AND status = 'pending'", (request_id,))
         req = cursor.fetchone()
 
-        if req and req["status"] == "pending":
+        if req:
             if action == "approve":
-                # Update the real price
-                cursor.execute("""
-                    INSERT INTO prices (vehicle_type_id, service_id, amount)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (vehicle_type_id, service_id)
-                    DO UPDATE SET amount = EXCLUDED.amount
-                """, (req["vehicle_type_id"], req["service_id"], req["requested_amount"]))
+                # Apply the extra to the wash
+                service_name = "Extra Payment" if req["extra_type"] == "payment" else "Staff Tip"
+                cursor.execute("SELECT service_id, commission_rule FROM services WHERE name = %s", (service_name,))
+                service = cursor.fetchone()
+
+                if service:
+                    commission = compute_commission(service["commission_rule"], req["extra_amount"])
+
+                    cursor.execute("""
+                        INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
+                        VALUES (%s, %s, %s, %s)
+                    """, (req["wash_id"], service["service_id"], req["extra_amount"], commission))
+
+                    # Update wash total
+                    cursor.execute("""
+                        UPDATE washes 
+                        SET total_amount = total_amount + %s
+                        WHERE wash_id = %s
+                    """, (req["extra_amount"], req["wash_id"]))
 
                 cursor.execute("""
-                    UPDATE price_change_requests
+                    UPDATE wash_edit_requests
                     SET status = 'approved', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP, admin_note = %s
                     WHERE request_id = %s
                 """, (session["user_id"], admin_note, request_id))
-                flash("Price change approved and applied!", "success")
+                flash("Extra approved and applied to the wash!", "success")
 
             elif action == "reject":
                 cursor.execute("""
-                    UPDATE price_change_requests
+                    UPDATE wash_edit_requests
                     SET status = 'rejected', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP, admin_note = %s
                     WHERE request_id = %s
                 """, (session["user_id"], admin_note, request_id))
-                flash("Price change request rejected.", "info")
+                flash("Request rejected.", "info")
 
             conn.commit()
 
@@ -1431,12 +1495,13 @@ def price_approvals():
     cursor.execute("""
         SELECT 
             r.*,
-            vt.name as vehicle_name,
-            s.name as service_name,
+            w.registration_number,
+            w.total_amount as current_total,
+            s.full_name as staff_name,
             u.full_name as requested_by_name
-        FROM price_change_requests r
-        JOIN vehicle_types vt ON r.vehicle_type_id = vt.vehicle_type_id
-        JOIN services s ON r.service_id = s.service_id
+        FROM wash_edit_requests r
+        JOIN washes w ON r.wash_id = w.wash_id
+        JOIN staff s ON w.staff_id = s.staff_id
         JOIN users u ON r.requested_by = u.user_id
         WHERE r.status = 'pending'
         ORDER BY r.requested_at DESC
@@ -1446,7 +1511,7 @@ def price_approvals():
     cursor.close()
     conn.close()
 
-    return render_template("price_approvals.html", pending=pending)
+    return render_template("extra_approvals.html", pending=pending)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
