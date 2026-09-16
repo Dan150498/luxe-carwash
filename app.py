@@ -1008,28 +1008,59 @@ def daily_commissions():
                            grand_total=grand_total)
 
 
-@app.route("/commissions/weekly")
+@app.route("/commissions/weekly", methods=["GET", "POST"])
 def weekly_commissions():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
-    # Default to current week (Monday to Sunday)
     today = date.today()
-    start_of_week = today - timedelta(days=today.weekday())  # Monday
-    end_of_week = start_of_week + timedelta(days=6)          # Sunday
+    start_of_week = today - timedelta(days=today.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
 
-    start_date = request.args.get("start") or start_of_week.isoformat()
-    end_date = request.args.get("end") or end_of_week.isoformat()
+    start_date = request.args.get("start") or request.form.get("start") or start_of_week.isoformat()
+    end_date = request.args.get("end") or request.form.get("end") or end_of_week.isoformat()
 
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+    # Handle Mark as Paid
+    if request.method == "POST" and request.form.get("action") == "mark_paid":
+        staff_ids = request.form.getlist("staff_ids")
+        for sid in staff_ids:
+            cursor.execute("""
+                SELECT COALESCE(SUM(ws.commission_amount), 0) as total
+                FROM washes w
+                JOIN wash_services ws ON w.wash_id = ws.wash_id
+                WHERE w.staff_id = %s AND w.wash_date BETWEEN %s AND %s
+            """, (sid, start_date, end_date))
+            total = cursor.fetchone()["total"]
+
+            if total > 0:
+                # Avoid duplicate payment for same period
+                cursor.execute("""
+                    SELECT 1 FROM commission_payments 
+                    WHERE staff_id = %s AND start_date = %s AND end_date = %s
+                """, (sid, start_date, end_date))
+                if not cursor.fetchone():
+                    cursor.execute("""
+                        INSERT INTO commission_payments (staff_id, start_date, end_date, total_amount, paid_by)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (sid, start_date, end_date, total, session.get("full_name")))
+        conn.commit()
+        flash("Selected staff have been marked as Paid!", "success")
+
+    # Get data + payment status
     cursor.execute("""
         SELECT 
             s.staff_id,
             s.full_name,
             COUNT(DISTINCT w.wash_id) as total_washes,
-            COALESCE(SUM(ws.commission_amount), 0) as total_commission
+            COALESCE(SUM(ws.commission_amount), 0) as total_commission,
+            EXISTS (
+                SELECT 1 FROM commission_payments cp 
+                WHERE cp.staff_id = s.staff_id 
+                  AND cp.start_date = %s AND cp.end_date = %s
+            ) as is_paid
         FROM staff s
         LEFT JOIN washes w ON s.staff_id = w.staff_id 
             AND w.wash_date BETWEEN %s AND %s
@@ -1037,10 +1068,10 @@ def weekly_commissions():
         WHERE s.is_active = 1
         GROUP BY s.staff_id, s.full_name
         ORDER BY total_commission DESC
-    """, (start_date, end_date))
+    """, (start_date, end_date, start_date, end_date))
     
     results = cursor.fetchall()
-    grand_total = sum(r["total_commission"] for r in results)
+    unpaid_total = sum(r["total_commission"] for r in results if not r["is_paid"])
     cursor.close()
     conn.close()
 
@@ -1048,7 +1079,7 @@ def weekly_commissions():
                            results=results,
                            start_date=start_date,
                            end_date=end_date,
-                           grand_total=grand_total)
+                           grand_total=unpaid_total)
 
 @app.route("/setup-payments")
 def setup_payments():
