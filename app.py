@@ -1235,6 +1235,32 @@ def setup_payments():
     conn.close()
     return message
 
+@app.route("/setup-security")
+def setup_security():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            ALTER TABLE users 
+            ADD COLUMN IF NOT EXISTS must_change_password INTEGER DEFAULT 0
+        """)
+        # Force the default admin to change password
+        cursor.execute("""
+            UPDATE users 
+            SET must_change_password = 1 
+            WHERE username = 'admin'
+        """)
+        conn.commit()
+        message = "Security setup completed successfully!"
+    except Exception as e:
+        message = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return message
+
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
