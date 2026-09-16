@@ -1353,5 +1353,120 @@ def setup_price_requests():
     conn.close()
     return message
 
+@app.route("/request-price-change", methods=["GET", "POST"])
+def request_price_change():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        vehicle_type_id = request.form.get("vehicle_type_id")
+        service_id = request.form.get("service_id")
+        requested_amount = request.form.get("requested_amount")
+
+        if not vehicle_type_id or not service_id or not requested_amount:
+            flash("All fields are required.", "danger")
+        else:
+            try:
+                requested_amount = int(requested_amount)
+
+                # Get current price
+                cursor.execute("""
+                    SELECT amount FROM prices 
+                    WHERE vehicle_type_id = %s AND service_id = %s
+                """, (vehicle_type_id, service_id))
+                row = cursor.fetchone()
+                current_amount = row["amount"] if row else 0
+
+                cursor.execute("""
+                    INSERT INTO price_change_requests 
+                    (vehicle_type_id, service_id, current_amount, requested_amount, requested_by)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (vehicle_type_id, service_id, current_amount, requested_amount, session["user_id"]))
+                conn.commit()
+                flash("Price change request submitted! Waiting for Admin approval.", "success")
+            except Exception as e:
+                flash("Something went wrong. Please try again.", "danger")
+                print(f"Error: {e}")
+
+    cursor.execute("SELECT vehicle_type_id, name FROM vehicle_types ORDER BY name")
+    vehicle_types = cursor.fetchall()
+
+    cursor.execute("SELECT service_id, name FROM services ORDER BY name")
+    services = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template("request_price_change.html",
+                           vehicle_types=vehicle_types,
+                           services=services)
+
+@app.route("/price-approvals", methods=["GET", "POST"])
+def price_approvals():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        request_id = request.form.get("request_id")
+        action = request.form.get("action")  # approve or reject
+        admin_note = request.form.get("admin_note", "").strip()
+
+        cursor.execute("SELECT * FROM price_change_requests WHERE request_id = %s", (request_id,))
+        req = cursor.fetchone()
+
+        if req and req["status"] == "pending":
+            if action == "approve":
+                # Update the real price
+                cursor.execute("""
+                    INSERT INTO prices (vehicle_type_id, service_id, amount)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (vehicle_type_id, service_id)
+                    DO UPDATE SET amount = EXCLUDED.amount
+                """, (req["vehicle_type_id"], req["service_id"], req["requested_amount"]))
+
+                cursor.execute("""
+                    UPDATE price_change_requests
+                    SET status = 'approved', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP, admin_note = %s
+                    WHERE request_id = %s
+                """, (session["user_id"], admin_note, request_id))
+                flash("Price change approved and applied!", "success")
+
+            elif action == "reject":
+                cursor.execute("""
+                    UPDATE price_change_requests
+                    SET status = 'rejected', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP, admin_note = %s
+                    WHERE request_id = %s
+                """, (session["user_id"], admin_note, request_id))
+                flash("Price change request rejected.", "info")
+
+            conn.commit()
+
+    # Get pending requests
+    cursor.execute("""
+        SELECT 
+            r.*,
+            vt.name as vehicle_name,
+            s.name as service_name,
+            u.full_name as requested_by_name
+        FROM price_change_requests r
+        JOIN vehicle_types vt ON r.vehicle_type_id = vt.vehicle_type_id
+        JOIN services s ON r.service_id = s.service_id
+        JOIN users u ON r.requested_by = u.user_id
+        WHERE r.status = 'pending'
+        ORDER BY r.requested_at DESC
+    """)
+    pending = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template("price_approvals.html", pending=pending)
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
