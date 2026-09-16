@@ -320,24 +320,10 @@ def record_wash():
                 """, (wash_id, s["service_id"], s["amount"], commission))
 
             conn.commit()
-
-            cursor.execute("SELECT full_name FROM staff WHERE staff_id = %s", (staff_id,))
-            staff_name = cursor.fetchone()["full_name"]
-
-            cursor.execute("SELECT name FROM vehicle_types WHERE vehicle_type_id = %s", (vehicle_type_id,))
-            vehicle_name = cursor.fetchone()["name"]
-
             cursor.close()
             conn.close()
 
-            return render_template("receipt.html",
-                                   wash_id=wash_id,
-                                   reg=reg,
-                                   staff_name=staff_name,
-                                   vehicle_name=vehicle_name,
-                                   services=service_details,
-                                   total=total,
-                                   payment_method=payment_method)
+            return redirect(url_for("view_receipt", wash_id=wash_id))
 
         except Exception as e:
             conn.rollback()
@@ -349,6 +335,52 @@ def record_wash():
     cursor.close()
     conn.close()
     return render_template("record_wash.html", staff=staff, vehicle_types=vehicle_types)
+
+@app.route("/receipt/<int:wash_id>")
+def view_receipt(wash_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("""
+        SELECT w.*, s.full_name as staff_name, vt.name as vehicle_name
+        FROM washes w
+        JOIN staff s ON w.staff_id = s.staff_id
+        JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
+        WHERE w.wash_id = %s
+    """, (wash_id,))
+    wash = cursor.fetchone()
+
+    if not wash:
+        cursor.close()
+        conn.close()
+        flash("Wash not found.", "danger")
+        return redirect(url_for("record_wash"))
+
+    cursor.execute("""
+        SELECT s.name, ws.amount
+        FROM wash_services ws
+        JOIN services s ON ws.service_id = s.service_id
+        WHERE ws.wash_id = %s
+        ORDER BY ws.wash_service_id
+    """, (wash_id,))
+    services = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template("receipt.html",
+                           wash_id=wash["wash_id"],
+                           reg=wash["registration_number"],
+                           staff_name=wash["staff_name"],
+                           vehicle_name=wash["vehicle_name"],
+                           services=services,
+                           total=wash["total_amount"],
+                           payment_method=wash["payment_method"],
+                           wash_date=wash["wash_date"],
+                           wash_time=wash["wash_time"])
 
 # ====================== TODAY'S WASHES ======================
 @app.route("/todays-washes")
