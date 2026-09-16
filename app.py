@@ -195,7 +195,7 @@ def login():
         cursor.close()
         conn.close()
 
-                if user:
+    if user:
             session["user_id"] = user["user_id"]
             session["username"] = user["username"]
             session["full_name"] = user["full_name"]
