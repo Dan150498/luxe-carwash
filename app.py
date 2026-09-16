@@ -1353,56 +1353,36 @@ def setup_price_requests():
     conn.close()
     return message
 
-@app.route("/request-price-change", methods=["GET", "POST"])
-def request_price_change():
-    if "user_id" not in session:
-        return redirect(url_for("login"))
+@app.route("/setup-wash-requests")
+def setup_wash_requests():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
 
     conn = get_connection()
-    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-    if request.method == "POST":
-        vehicle_type_id = request.form.get("vehicle_type_id")
-        service_id = request.form.get("service_id")
-        requested_amount = request.form.get("requested_amount")
-
-        if not vehicle_type_id or not service_id or not requested_amount:
-            flash("All fields are required.", "danger")
-        else:
-            try:
-                requested_amount = int(requested_amount)
-
-                # Get current price
-                cursor.execute("""
-                    SELECT amount FROM prices 
-                    WHERE vehicle_type_id = %s AND service_id = %s
-                """, (vehicle_type_id, service_id))
-                row = cursor.fetchone()
-                current_amount = row["amount"] if row else 0
-
-                cursor.execute("""
-                    INSERT INTO price_change_requests 
-                    (vehicle_type_id, service_id, current_amount, requested_amount, requested_by)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (vehicle_type_id, service_id, current_amount, requested_amount, session["user_id"]))
-                conn.commit()
-                flash("Price change request submitted! Waiting for Admin approval.", "success")
-            except Exception as e:
-                flash("Something went wrong. Please try again.", "danger")
-                print(f"Error: {e}")
-
-    cursor.execute("SELECT vehicle_type_id, name FROM vehicle_types ORDER BY name")
-    vehicle_types = cursor.fetchall()
-
-    cursor.execute("SELECT service_id, name FROM services ORDER BY name")
-    services = cursor.fetchall()
-
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS wash_edit_requests (
+                request_id SERIAL PRIMARY KEY,
+                wash_id INTEGER REFERENCES washes(wash_id) ON DELETE CASCADE,
+                extra_type TEXT NOT NULL CHECK(extra_type IN ('payment', 'tip')),
+                extra_amount INTEGER NOT NULL,
+                extra_note TEXT,
+                requested_by INTEGER REFERENCES users(user_id),
+                requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+                reviewed_by INTEGER REFERENCES users(user_id),
+                reviewed_at TIMESTAMP,
+                admin_note TEXT
+            )
+        """)
+        conn.commit()
+        message = "Wash edit requests table created successfully!"
+    except Exception as e:
+        message = f"Error: {e}"
     cursor.close()
     conn.close()
-
-    return render_template("request_price_change.html",
-                           vehicle_types=vehicle_types,
-                           services=services)
+    return message
 
 @app.route("/price-approvals", methods=["GET", "POST"])
 def price_approvals():
