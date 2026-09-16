@@ -27,11 +27,14 @@
                     <a href="{{ url_for('daily_commissions') }}" class="nav-item">Daily Commissions</a>
                     <a href="{{ url_for('weekly_commissions') }}" class="nav-item">Weekly Payout</a>
                     <a href="{{ url_for('staff_performance') }}" class="nav-item">Performance</a>
+                    <a href="{{ url_for('request_price_change') }}" class="nav-item">Request Price Change</a>
+                    <a href="{{ url_for('price_approvals') }}" class="nav-item">Price Approvals</a>
                 {% else %}
                     <a href="{{ url_for('cashier_home') }}" class="nav-item">Home</a>
                     <a href="{{ url_for('record_wash') }}" class="nav-item">Record Wash</a>
                     <a href="{{ url_for('todays_washes') }}" class="nav-item">Today's Washes</a>
                     <a href="{{ url_for('search') }}" class="nav-item">Search</a>
+                    <a href="{{ url_for('request_price_change') }}" class="nav-item">Request Price Change</a>
                 {% endif %}
             </nav>
 
