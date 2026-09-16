@@ -22,37 +22,66 @@
         </div>
     </form>
 
-    <p style="color:#888; margin-bottom:15px;">
-        Period: <strong>{{ start_date }}</strong> to <strong>{{ end_date }}</strong>
+    <p style="color:#888; margin-bottom:20px;">
+        Period: <strong>{{ start_date }}</strong> → <strong>{{ end_date }}</strong>
     </p>
 
-    <div class="table-responsive">
-        <table>
-            <thead>
-                <tr>
-                    <th>Staff Name</th>
-                    <th>Total Washes</th>
-                    <th>Total Commission (KSh)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for r in results %}
-                <tr>
-                    <td>{{ r.full_name }}</td>
-                    <td>{{ r.total_washes }}</td>
-                    <td style="color:#d4af37; font-weight:600;">{{ r.total_commission }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="3" style="color:#888;">No commissions in this period</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+    <form method="POST">
+        <input type="hidden" name="start" value="{{ start_date }}">
+        <input type="hidden" name="end" value="{{ end_date }}">
+        <input type="hidden" name="action" value="mark_paid">
 
-    <div style="margin-top:25px; text-align:right; font-size:1.3rem;">
-        <strong>Grand Total to Pay: <span style="color:#d4af37;">KSh {{ grand_total }}</span></strong>
-    </div>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Select</th>
+                        <th>Staff Name</th>
+                        <th>Washes</th>
+                        <th>Commission (KSh)</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in results %}
+                    <tr>
+                        <td>
+                            {% if not r.is_paid and r.total_commission > 0 %}
+                                <input type="checkbox" name="staff_ids" value="{{ r.staff_id }}">
+                            {% endif %}
+                        </td>
+                        <td>{{ r.full_name }}</td>
+                        <td>{{ r.total_washes }}</td>
+                        <td style="color:#d4af37; font-weight:600;">{{ r.total_commission }}</td>
+                        <td>
+                            {% if r.is_paid %}
+                                <span style="color:#51cf66; font-weight:600;">Paid</span>
+                            {% elif r.total_commission > 0 %}
+                                <span style="color:#f0d77b;">Pending</span>
+                            {% else %}
+                                <span style="color:#888;">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" style="color:#888;">No data for this period</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="margin-top:25px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
+            <button type="submit" class="btn"
+                    onclick="return confirm('Mark selected staff as Paid for this week?')">
+                Mark Selected as Paid
+            </button>
+
+            <div style="font-size:1.2rem;">
+                <strong>Unpaid Total: <span style="color:#d4af37;">KSh {{ grand_total }}</span></strong>
+            </div>
+        </div>
+    </form>
 </div>
 {% endblock %}
