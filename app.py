@@ -9,7 +9,7 @@ import pandas as pd
 from io import BytesIO
 
 app = Flask(__name__)
-app.secret_key = "luxe_carwash_secret_key_2026"
+app.secret_key = os.environ.get("SECRET_KEY", "change-this-in-production")
 
 # ====================== DATABASE ======================
 DATABASE_URL = os.environ.get("DATABASE_URL")
