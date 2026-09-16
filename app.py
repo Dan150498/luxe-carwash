@@ -1081,6 +1081,122 @@ def weekly_commissions():
                            end_date=end_date,
                            grand_total=unpaid_total)
 
+@app.route("/performance")
+def staff_performance():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    today = date.today()
+    default_start = (today - timedelta(days=30)).isoformat()
+    default_end = today.isoformat()
+
+    start_date = request.args.get("start") or default_start
+    end_date = request.args.get("end") or default_end
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Staff Performance
+    cursor.execute("""
+        SELECT 
+            s.staff_id,
+            s.full_name,
+            COUNT(DISTINCT w.wash_id) AS total_washes,
+            COALESCE(SUM(w.total_amount), 0) AS total_revenue,
+            COALESCE(SUM(ws.commission_amount), 0) AS total_commission,
+            CASE 
+                WHEN COUNT(DISTINCT w.wash_id) > 0 
+                THEN ROUND(COALESCE(SUM(w.total_amount), 0)::numeric / COUNT(DISTINCT w.wash_id), 0)
+                ELSE 0 
+            END AS avg_per_wash
+        FROM staff s
+        LEFT JOIN washes w ON s.staff_id = w.staff_id 
+            AND w.wash_date BETWEEN %s AND %s
+        LEFT JOIN wash_services ws ON w.wash_id = ws.wash_id
+        WHERE s.is_active = 1
+        GROUP BY s.staff_id, s.full_name
+        ORDER BY total_revenue DESC
+    """, (start_date, end_date))
+    staff_results = cursor.fetchall()
+
+    total_washes = sum(r["total_washes"] for r in staff_results)
+    total_revenue = sum(r["total_revenue"] for r in staff_results)
+    total_commission = sum(r["total_commission"] for r in staff_results)
+
+    # Top Services
+    cursor.execute("""
+        SELECT 
+            s.name AS service_name,
+            COUNT(*) AS times_done,
+            COALESCE(SUM(ws.amount), 0) AS total_revenue
+        FROM wash_services ws
+        JOIN services s ON ws.service_id = s.service_id
+        JOIN washes w ON ws.wash_id = w.wash_id
+        WHERE w.wash_date BETWEEN %s AND %s
+        GROUP BY s.name
+        ORDER BY times_done DESC
+        LIMIT 10
+    """, (start_date, end_date))
+    top_services = cursor.fetchall()
+
+    # Busiest Days
+    cursor.execute("""
+        SELECT 
+            w.wash_date,
+            TO_CHAR(w.wash_date, 'Day') AS day_name,
+            COUNT(*) AS total_washes,
+            COALESCE(SUM(w.total_amount), 0) AS total_revenue
+        FROM washes w
+        WHERE w.wash_date BETWEEN %s AND %s
+        GROUP BY w.wash_date
+        ORDER BY total_washes DESC
+        LIMIT 10
+    """, (start_date, end_date))
+    busiest_days = cursor.fetchall()
+
+    # Weekly Comparison
+    cursor.execute("""
+        SELECT 
+            DATE_TRUNC('week', w.wash_date)::date AS week_start,
+            COUNT(*) AS total_washes,
+            COALESCE(SUM(w.total_amount), 0) AS total_revenue
+        FROM washes w
+        WHERE w.wash_date >= CURRENT_DATE - INTERVAL '56 days'
+        GROUP BY week_start
+        ORDER BY week_start DESC
+        LIMIT 8
+    """)
+    weekly_comparison = cursor.fetchall()
+
+    # Monthly Comparison
+    cursor.execute("""
+        SELECT 
+            TO_CHAR(w.wash_date, 'YYYY-MM') AS month,
+            COUNT(*) AS total_washes,
+            COALESCE(SUM(w.total_amount), 0) AS total_revenue
+        FROM washes w
+        WHERE w.wash_date >= CURRENT_DATE - INTERVAL '180 days'
+        GROUP BY month
+        ORDER BY month DESC
+        LIMIT 6
+    """)
+    monthly_comparison = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template("staff_performance.html",
+                           staff_results=staff_results,
+                           top_services=top_services,
+                           busiest_days=busiest_days,
+                           weekly_comparison=weekly_comparison,
+                           monthly_comparison=monthly_comparison,
+                           start_date=start_date,
+                           end_date=end_date,
+                           total_washes=total_washes,
+                           total_revenue=total_revenue,
+                           total_commission=total_commission)
+
 @app.route("/setup-payments")
 def setup_payments():
     if "user_id" not in session or session["role"] != "admin":
@@ -1110,120 +1226,6 @@ def setup_payments():
     conn.close()
     return message
 
-@app.route("/performance")
-def staff_performance():
-    if "user_id" not in session or session["role"] != "admin":
-        return redirect(url_for("login"))
 
-    today = date.today()
-    default_start = (today - timedelta(days=30)).isoformat()
-    default_end = today.isoformat()
-
-    start_date = request.args.get("start") or default_start
-    end_date = request.args.get("end") or default_end
-
-    conn = get_connection()
-    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-    # ===== 1. Staff Performance =====
-    cursor.execute("""
-        SELECT 
-            s.staff_id,
-            s.full_name,
-            COUNT(DISTINCT w.wash_id) AS total_washes,
-            COALESCE(SUM(w.total_amount), 0) AS total_revenue,
-            COALESCE(SUM(ws.commission_amount), 0) AS total_commission,
-            CASE 
-                WHEN COUNT(DISTINCT w.wash_id) > 0 
-                THEN ROUND(COALESCE(SUM(w.total_amount), 0)::numeric / COUNT(DISTINCT w.wash_id), 0)
-                ELSE 0 
-            END AS avg_per_wash
-        FROM staff s
-        LEFT JOIN washes w ON s.staff_id = w.staff_id 
-            AND w.wash_date BETWEEN %s AND %s
-        LEFT JOIN wash_services ws ON w.wash_id = ws.wash_id
-        WHERE s.is_active = 1
-        GROUP BY s.staff_id, s.full_name
-        ORDER BY total_revenue DESC
-    """, (start_date, end_date))
-    staff_results = cursor.fetchall()
-
-    total_washes = sum(r["total_washes"] for r in staff_results)
-    total_revenue = sum(r["total_revenue"] for r in staff_results)
-    total_commission = sum(r["total_commission"] for r in staff_results)
-
-    # ===== 2. Top Services =====
-    cursor.execute("""
-        SELECT 
-            s.name AS service_name,
-            COUNT(*) AS times_done,
-            COALESCE(SUM(ws.amount), 0) AS total_revenue
-        FROM wash_services ws
-        JOIN services s ON ws.service_id = s.service_id
-        JOIN washes w ON ws.wash_id = w.wash_id
-        WHERE w.wash_date BETWEEN %s AND %s
-        GROUP BY s.name
-        ORDER BY times_done DESC
-        LIMIT 10
-    """, (start_date, end_date))
-    top_services = cursor.fetchall()
-
-    # ===== 3. Busiest Days =====
-    cursor.execute("""
-        SELECT 
-            w.wash_date,
-            TO_CHAR(w.wash_date, 'Day') AS day_name,
-            COUNT(*) AS total_washes,
-            COALESCE(SUM(w.total_amount), 0) AS total_revenue
-        FROM washes w
-        WHERE w.wash_date BETWEEN %s AND %s
-        GROUP BY w.wash_date
-        ORDER BY total_washes DESC
-        LIMIT 10
-    """, (start_date, end_date))
-    busiest_days = cursor.fetchall()
-
-    # ===== 4. Weekly Comparison (last 8 weeks) =====
-    cursor.execute("""
-        SELECT 
-            DATE_TRUNC('week', w.wash_date)::date AS week_start,
-            COUNT(*) AS total_washes,
-            COALESCE(SUM(w.total_amount), 0) AS total_revenue
-        FROM washes w
-        WHERE w.wash_date >= %s - INTERVAL '56 days'
-        GROUP BY week_start
-        ORDER BY week_start DESC
-        LIMIT 8
-    """, (today,))
-    weekly_comparison = cursor.fetchall()
-
-    # ===== 5. Monthly Comparison (last 6 months) =====
-    cursor.execute("""
-        SELECT 
-            TO_CHAR(w.wash_date, 'YYYY-MM') AS month,
-            COUNT(*) AS total_washes,
-            COALESCE(SUM(w.total_amount), 0) AS total_revenue
-        FROM washes w
-        WHERE w.wash_date >= %s - INTERVAL '180 days'
-        GROUP BY month
-        ORDER BY month DESC
-        LIMIT 6
-    """, (today,))
-    monthly_comparison = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
-
-    return render_template("staff_performance.html",
-                           staff_results=staff_results,
-                           top_services=top_services,
-                           busiest_days=busiest_days,
-                           weekly_comparison=weekly_comparison,
-                           monthly_comparison=monthly_comparison,
-                           start_date=start_date,
-                           end_date=end_date,
-                           total_washes=total_washes,
-                           total_revenue=total_revenue,
-                           total_commission=total_commission)
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
