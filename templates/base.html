@@ -37,6 +37,7 @@
 
             <div class="sidebar-footer">
                 <div class="user-name">{{ session.get('full_name') }}</div>
+                <a href="{{ url_for('change_password') }}" class="nav-item" style="margin-bottom:8px;">Change Password</a>
                 <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
             </div>
         </aside>
