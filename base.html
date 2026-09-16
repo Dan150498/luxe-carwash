@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Luxe Carwash{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="layout">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                LUXE CARWASH
+            </div>
+
+            <nav class="sidebar-nav">
+                {% if session.get('role') == 'admin' %}
+                    <a href="{{ url_for('dashboard') }}" class="nav-item">Dashboard</a>
+                    <a href="{{ url_for('record_wash') }}" class="nav-item">Record Wash</a>
+                    <a href="{{ url_for('todays_washes') }}" class="nav-item">Today's Washes</a>
+                    <a href="{{ url_for('search') }}" class="nav-item">Search</a>
+                    <a href="{{ url_for('reports') }}" class="nav-item">Reports</a>
+                    <a href="{{ url_for('manage_staff') }}" class="nav-item">Manage Staff</a>
+                    <a href="{{ url_for('change_prices') }}" class="nav-item">Change Prices</a>
+                    <a href="{{ url_for('manage_types_services') }}" class="nav-item">Types & Services</a>
+                    <a href="{{ url_for('daily_commissions') }}" class="nav-item">Daily Commissions</a>
+                    <a href="{{ url_for('weekly_commissions') }}" class="nav-item">Weekly Payout</a>
+                    <a href="{{ url_for('staff_performance') }}" class="nav-item">Performance</a>
+                    <a href="{{ url_for('extra_approvals') }}" class="nav-item">Extra Approvals</a>
+                
+                {% else %}
+                    <a href="{{ url_for('cashier_home') }}" class="nav-item">Home</a>
+                    <a href="{{ url_for('record_wash') }}" class="nav-item">Record Wash</a>
+                    <a href="{{ url_for('todays_washes') }}" class="nav-item">Today's Washes</a>
+                    <a href="{{ url_for('search') }}" class="nav-item">Search</a>
+                    
+                {% endif %}
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-name">{{ session.get('full_name') }}</div>
+                <a href="{{ url_for('change_password') }}" class="nav-item" style="margin-bottom:8px;">Change Password</a>
+                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+            <header class="topbar">
+                <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+                <div class="topbar-title">{% block page_title %}{% endblock %}</div>
+            </header>
+
+            <div class="content">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+        }
+    </script>
+</body>
+</html>
