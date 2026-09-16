@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Performance Analysis - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Business & Staff Performance Analysis</h2>
+
+    <!-- Date Filter -->
+    <form method="GET" style="margin-bottom:30px;">
+        <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label>From Date</label>
+                <input type="date" name="start" value="{{ start_date }}"
+                       style="padding:10px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label>To Date</label>
+                <input type="date" name="end" value="{{ end_date }}"
+                       style="padding:10px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <button type="submit" class="btn">Analyse</button>
+        </div>
+    </form>
+
+    <!-- Summary -->
+    <div class="stats-grid" style="margin-bottom:35px;">
+        <div class="stat-box">
+            <div class="number">{{ total_washes }}</div>
+            <div class="label">Total Washes</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">KSh {{ total_revenue }}</div>
+            <div class="label">Total Revenue</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">KSh {{ total_commission }}</div>
+            <div class="label">Total Commission</div>
+        </div>
+    </div>
+
+    <!-- ==================== STAFF PERFORMANCE ==================== -->
+    <h3 style="color:#d4af37; margin-bottom:15px;">Staff Performance Ranking</h3>
+    <div class="table-responsive" style="margin-bottom:40px;">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Staff Name</th>
+                    <th>Washes</th>
+                    <th>Revenue</th>
+                    <th>Commission</th>
+                    <th>Avg / Wash</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in staff_results %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ r.full_name }}</td>
+                    <td>{{ r.total_washes }}</td>
+                    <td style="color:#d4af37; font-weight:600;">KSh {{ r.total_revenue }}</td>
+                    <td>KSh {{ r.total_commission }}</td>
+                    <td>KSh {{ r.avg_per_wash }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" style="color:#888;">No data</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ==================== TOP SERVICES ==================== -->
+    <h3 style="color:#d4af37; margin-bottom:15px;">Top Services</h3>
+    <div class="table-responsive" style="margin-bottom:40px;">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Service</th>
+                    <th>Times Done</th>
+                    <th>Revenue</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in top_services %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ s.service_name }}</td>
+                    <td>{{ s.times_done }}</td>
+                    <td style="color:#d4af37;">KSh {{ s.total_revenue }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" style="color:#888;">No data</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ==================== BUSIEST DAYS ==================== -->
+    <h3 style="color:#d4af37; margin-bottom:15px;">Busiest Days</h3>
+    <div class="table-responsive" style="margin-bottom:40px;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Day</th>
+                    <th>Washes</th>
+                    <th>Revenue</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in busiest_days %}
+                <tr>
+                    <td>{{ d.wash_date }}</td>
+                    <td>{{ d.day_name }}</td>
+                    <td>{{ d.total_washes }}</td>
+                    <td style="color:#d4af37;">KSh {{ d.total_revenue }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" style="color:#888;">No data</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ==================== WEEKLY COMPARISON ==================== -->
+    <h3 style="color:#d4af37; margin-bottom:15px;">Weekly Comparison (Last 8 Weeks)</h3>
+    <div class="table-responsive" style="margin-bottom:40px;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Week Starting</th>
+                    <th>Washes</th>
+                    <th>Revenue</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for w in weekly_comparison %}
+                <tr>
+                    <td>{{ w.week_start }}</td>
+                    <td>{{ w.total_washes }}</td>
+                    <td style="color:#d4af37;">KSh {{ w.total_revenue }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" style="color:#888;">No data</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ==================== MONTHLY COMPARISON ==================== -->
+    <h3 style="color:#d4af37; margin-bottom:15px;">Monthly Comparison (Last 6 Months)</h3>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Month</th>
+                    <th>Washes</th>
+                    <th>Revenue</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in monthly_comparison %}
+                <tr>
+                    <td>{{ m.month }}</td>
+                    <td>{{ m.total_washes }}</td>
+                    <td style="color:#d4af37;">KSh {{ m.total_revenue }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" style="color:#888;">No data</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
