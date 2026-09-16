@@ -10,7 +10,7 @@
     </div>
 
     <p><strong>Receipt No:</strong> {{ wash_id }}</p>
-    <p><strong>Date:</strong> {{ date.today().strftime('%Y-%m-%d') if date is defined else '' }}</p>
+    <p><strong>Date:</strong> {{ wash_date }} {{ wash_time }}</p>
     <hr style="border-color:#333; margin:15px 0;">
 
     <p><strong>Registration:</strong> {{ reg }}</p>
