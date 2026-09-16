@@ -1050,5 +1050,34 @@ def weekly_commissions():
                            end_date=end_date,
                            grand_total=grand_total)
 
+@app.route("/setup-payments")
+def setup_payments():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS commission_payments (
+                payment_id SERIAL PRIMARY KEY,
+                staff_id INTEGER REFERENCES staff(staff_id),
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                total_amount INTEGER NOT NULL,
+                paid_on DATE DEFAULT CURRENT_DATE,
+                paid_by TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        message = "Commission payments table created successfully!"
+    except Exception as e:
+        message = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return message
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
