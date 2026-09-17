@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Request Extra - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:550px;">
+    <h2>Request Extra Payment / Tip</h2>
+
+    <div style="background:#111; padding:15px; border-radius:8px; margin-bottom:25px;">
+        <p><strong>Wash ID:</strong> {{ wash.wash_id }}</p>
+        <p><strong>Registration:</strong> {{ wash.registration_number }}</p>
+        <p><strong>Staff:</strong> {{ wash.staff_name }}</p>
+        <p><strong>Vehicle:</strong> {{ wash.vehicle_name }}</p>
+        <p><strong>Current Total:</strong> KSh {{ wash.total_amount }}</p>
+    </div>
+
+    <form method="POST">
+        <div class="form-group">
+            <label>Type</label>
+            <select name="extra_type" required
+                    style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                <option value="">-- Select --</option>
+                <option value="payment">Extra Payment (goes to business + 30% commission)</option>
+                <option value="tip">Staff Tip (100% goes to staff)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Amount (KSh)</label>
+            <input type="number" name="extra_amount" required min="1"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Note (optional)</label>
+            <input type="text" name="extra_note"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <button type="submit" class="btn">Submit Request for Approval</button>
+        <a href="{{ url_for('search') }}" class="btn" style="background:#333; margin-left:10px;">Cancel</a>
+    </form>
+</div>
+{% endblock %}
