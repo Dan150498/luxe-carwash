@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Extra Approvals - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Pending Extra Payment / Tip Requests</h2>
+
+    {% if pending %}
+        {% for r in pending %}
+        <div style="background:#111; border:1px solid #333; border-radius:8px; padding:20px; margin-bottom:20px;">
+            <p><strong>Wash ID:</strong> {{ r.wash_id }} | <strong>Reg:</strong> {{ r.registration_number }}</p>
+            <p><strong>Staff:</strong> {{ r.staff_name }}</p>
+            <p><strong>Type:</strong> 
+                {% if r.extra_type == 'tip' %}
+                    <span style="color:#51cf66;">Staff Tip (100% to staff)</span>
+                {% else %}
+                    <span style="color:#f0d77b;">Extra Payment (30% commission)</span>
+                {% endif %}
+            </p>
+            <p><strong>Amount:</strong> <span style="color:#d4af37; font-size:1.2rem;">KSh {{ r.extra_amount }}</span></p>
+            <p><strong>Current Wash Total:</strong> KSh {{ r.current_total }}</p>
+            <p><strong>Requested by:</strong> {{ r.requested_by_name }}</p>
+            {% if r.extra_note %}<p><strong>Note:</strong> {{ r.extra_note }}</p>{% endif %}
+
+            <form method="POST" style="margin-top:15px;">
+                <input type="hidden" name="request_id" value="{{ r.request_id }}">
+                <div class="form-group">
+                    <label>Admin Note (optional)</label>
+                    <input type="text" name="admin_note"
+                           style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+                </div>
+                <button type="submit" name="action" value="approve" class="btn">Approve</button>
+                <button type="submit" name="action" value="reject" class="btn" style="background:#333; margin-left:10px;">Reject</button>
+            </form>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="color:#888;">No pending requests.</p>
+    {% endif %}
+</div>
+{% endblock %}
