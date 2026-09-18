@@ -34,7 +34,10 @@
                     <a href="{{ url_for('record_wash') }}" class="nav-item">Record Wash</a>
                     <a href="{{ url_for('todays_washes') }}" class="nav-item">Today's Washes</a>
                     <a href="{{ url_for('search') }}" class="nav-item">Search</a>
-                    
+                {% elif session.get('role') == 'staff' %}
+                    <a href="{{ url_for('staff_dashboard') }}" class="nav-item">My Dashboard</a>
+                   
+                
                 {% endif %}
             </nav>
 

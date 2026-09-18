@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Create Staff Login - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:500px;">
+    <h2>Create Login for {{ staff.full_name }}</h2>
+
+    {% if existing %}
+        <p style="color:#51cf66;">This staff member already has a login account.</p>
+        <a href="{{ url_for('manage_staff') }}" class="btn">Back</a>
+    {% else %}
+        <form method="POST">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" required
+                       style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="text" name="password" required minlength="4"
+                       style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <button type="submit" class="btn">Create Login</button>
+            <a href="{{ url_for('manage_staff') }}" class="btn" style="background:#333; margin-left:10px;">Cancel</a>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}

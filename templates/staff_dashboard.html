@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}My Dashboard - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>My Dashboard</h2>
+    <p style="color:#888; margin-bottom:25px;">Welcome, {{ session.full_name }}</p>
+
+    <!-- Summary Cards -->
+    <div class="stats-grid" style="margin-bottom:30px;">
+        <div class="stat-box">
+            <div class="number">{{ today_washes|length }}</div>
+            <div class="label">Washes Today</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">KSh {{ today_commission }}</div>
+            <div class="label">Today's Commission</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">KSh {{ week_commission }}</div>
+            <div class="label">This Week's Commission</div>
+        </div>
+        <div class="stat-box">
+            <div class="number" style="color: {% if is_paid %}#51cf66{% else %}#f0d77b{% endif %};">
+                {% if is_paid %}Paid{% else %}Pending{% endif %}
+            </div>
+            <div class="label">Week Payout Status</div>
+        </div>
+    </div>
+
+    <p style="color:#888; margin-bottom:15px;">
+        Week: <strong>{{ start_of_week }}</strong> → <strong>{{ end_of_week }}</strong>
+    </p>
+
+    <!-- Today's Washes -->
+    <h3 style="color:#d4af37; margin-bottom:15px;">My Washes Today ({{ today }})</h3>
+
+    {% if today_washes %}
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Registration</th>
+                        <th>Vehicle</th>
+                        <th>Amount</th>
+                        <th>Payment</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for w in today_washes %}
+                    <tr>
+                        <td>{{ w.wash_id }}</td>
+                        <td>{{ w.registration_number }}</td>
+                        <td>{{ w.vehicle_name }}</td>
+                        <td style="color:#d4af37;">KSh {{ w.total_amount }}</td>
+                        <td>{{ w.payment_method }}</td>
+                        <td>{{ w.wash_time }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p style="color:#888;">No washes recorded for you today yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
