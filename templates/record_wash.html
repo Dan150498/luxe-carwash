@@ -43,26 +43,36 @@
             </div>
         </div>
 
-        <!-- Payment Section -->
+                <!-- Payment Breakdown -->
         <div class="form-group">
-           <label style="color:#d4af37; margin-bottom:10px; display:block;">Payment Breakdown</label>
-    
+            <label style="color:#d4af37; margin-bottom:10px; display:block;">Payment Breakdown</label>
+            
             <div style="display:flex; gap:15px; flex-wrap:wrap;">
                 <div style="flex:1; min-width:140px;">
                     <label>Cash (KSh)</label>
-                    <input type="number" name="cash_amount" id="cash_amount" value="0" min="0"
+                    <input type="number" name="cash_amount" value="0" min="0"
                            style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                </div>
+                <div style="flex:1; min-width:140px;">
+                    <label>M-Pesa (KSh)</label>
+                    <input type="number" name="mpesa_amount" value="0" min="0"
+                           style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                </div>
             </div>
-            <div style="flex:1; min-width:140px;">
-                <label>M-Pesa (KSh)</label>
-                <input type="number" name="mpesa_amount" id="mpesa_amount" value="0" min="0"
-                       style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
-            </div>
+            <p style="color:#888; font-size:0.85rem; margin-top:8px;">
+                Cash + M-Pesa must equal the Total Amount of the wash
+            </p>
         </div>
-        <p style="color:#888; font-size:0.85rem; margin-top:8px;">
-            Cash + M-Pesa must equal the Total Amount
-        </p>
-    </div>
+
+        <!-- BUTTONS - MAKE SURE THESE ARE PRESENT -->
+        <div style="margin-top:25px;">
+            <button type="submit" class="btn">Save Wash & Print Receipt</button>
+            <a href="{{ url_for('dashboard') if session.role == 'admin' else url_for('cashier_home') }}" 
+               class="btn" style="background:#333; margin-left:10px;">Cancel</a>
+        </div>
+    </form>
+</div>
+
 
 <script>
     // When vehicle type changes, load available services
