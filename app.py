@@ -7,6 +7,19 @@ from datetime import date, datetime
 import os
 import pandas as pd
 from io import BytesIO
+from datetime import date, datetime, timedelta, time
+import pytz
+
+# Kenyan timezone
+EAT = pytz.timezone("Africa/Nairobi")
+
+def get_kenya_today():
+    """Returns today's date in Kenyan time"""
+    return datetime.now(EAT).date()
+
+def get_kenya_now():
+    """Returns current datetime in Kenyan time"""
+    return datetime.now(EAT)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-in-production")
@@ -230,7 +243,7 @@ def dashboard():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
-    today = date.today().isoformat()
+    today = get_kenya_today().isoformat()
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cursor.execute("""
@@ -432,7 +445,7 @@ def todays_washes():
     if "user_id" not in session:
         return redirect(url_for("login"))
 
-    today = date.today().isoformat()
+    today = get_kenya_today().isoformat()
     
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -1024,7 +1037,7 @@ def daily_commissions():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
-    selected_date = request.args.get("date") or date.today().isoformat()
+    selected_date = request.args.get("date") or get_kenya_today().isoformat()
 
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -1059,7 +1072,7 @@ def weekly_commissions():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
-    today = date.today()
+    today = get_kenya_today()
     start_of_week = today - timedelta(days=today.weekday())
     end_of_week = start_of_week + timedelta(days=6)
 
@@ -1132,7 +1145,7 @@ def staff_performance():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
-    today = date.today()
+    today = get_kenya_today()
     default_start = (today - timedelta(days=30)).isoformat()
     default_end = today.isoformat()
 
