@@ -29,7 +29,7 @@
                     <a href="{{ url_for('staff_performance') }}" class="nav-item">Performance</a>
                     <a href="{{ url_for('extra_approvals') }}" class="nav-item">Extra Approvals</a>
                 
-                {% else %}
+                {% elif session.get('role') == 'cashier' %}
                     <a href="{{ url_for('cashier_home') }}" class="nav-item">Home</a>
                     <a href="{{ url_for('record_wash') }}" class="nav-item">Record Wash</a>
                     <a href="{{ url_for('todays_washes') }}" class="nav-item">Today's Washes</a>
