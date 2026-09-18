@@ -57,6 +57,7 @@
                                 <a href="{{ url_for('deactivate_staff', staff_id=s.staff_id) }}"
                                    style="color:#ff6b6b;"
                                    onclick="return confirm('Deactivate this staff member?')">Deactivate</a>
+                                   <a href="{{ url_for('create_staff_login', staff_id=s.staff_id) }}" style="color:#66d9ef;">Create Login</a>
                             {% else %}
                                 <a href="{{ url_for('activate_staff', staff_id=s.staff_id) }}"
                                    style="color:#51cf66;">Activate</a>
