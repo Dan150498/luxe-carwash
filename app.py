@@ -1438,6 +1438,7 @@ def request_extra(wash_id):
 
 @app.route("/extra-approvals", methods=["GET", "POST"])
 def extra_approvals():
+
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
@@ -1512,6 +1513,30 @@ def extra_approvals():
     conn.close()
 
     return render_template("extra_approvals.html", pending=pending)
+
+@app.route("/setup-split-payment")
+def setup_split_payment():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            ALTER TABLE washes 
+            ADD COLUMN IF NOT EXISTS cash_amount INTEGER DEFAULT 0
+        """)
+        cursor.execute("""
+            ALTER TABLE washes 
+            ADD COLUMN IF NOT EXISTS mpesa_amount INTEGER DEFAULT 0
+        """)
+        conn.commit()
+        message = "Split payment columns added successfully!"
+    except Exception as e:
+        message = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return message
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
