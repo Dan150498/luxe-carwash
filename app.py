@@ -292,8 +292,17 @@ def record_wash():
         reg = request.form.get("registration", "").strip().upper()
         staff_id = request.form.get("staff_id")
         vehicle_type_id = request.form.get("vehicle_type_id")
-        payment_method = request.form.get("payment_method", "Cash")
         selected_services = request.form.getlist("services")
+
+        cash_amount_raw = request.form.get("cash_amount", "0").strip()
+        mpesa_amount_raw = request.form.get("mpesa_amount", "0").strip()
+
+        try:
+            cash_amount = int(cash_amount_raw) if cash_amount_raw else 0
+            mpesa_amount = int(mpesa_amount_raw) if mpesa_amount_raw else 0
+        except:
+            cash_amount = 0
+            mpesa_amount = 0
 
         if not reg or not staff_id or not vehicle_type_id or not selected_services:
             flash("Please fill all required fields and select at least one service.", "danger")
@@ -301,6 +310,7 @@ def record_wash():
             conn.close()
             return render_template("record_wash.html", staff=staff, vehicle_types=vehicle_types)
 
+        # Calculate total and get service details
         total = 0
         service_details = []
         for sid in selected_services:
@@ -314,19 +324,39 @@ def record_wash():
             if row:
                 total += row["amount"]
                 service_details.append(row)
-            else:
-                flash(f"Warning: no price is set for one of the selected services on this vehicle type — it was skipped and NOT charged. Please set it under Change Prices.", "danger")
+
+        if not service_details:
+            flash("No valid services selected or prices not set.", "danger")
+            cursor.close()
+            conn.close()
+            return render_template("record_wash.html", staff=staff, vehicle_types=vehicle_types)
+
+        # Validate payment split
+        if cash_amount + mpesa_amount != total:
+            flash(f"Cash + M-Pesa must equal the Total (KSh {total}). You entered KSh {cash_amount + mpesa_amount}.", "danger")
+            cursor.close()
+            conn.close()
+            return render_template("record_wash.html", staff=staff, vehicle_types=vehicle_types)
+
+        # Determine payment method label
+        if cash_amount > 0 and mpesa_amount > 0:
+            payment_method = "Mixed"
+        elif mpesa_amount > 0:
+            payment_method = "M-Pesa"
+        else:
+            payment_method = "Cash"
+
         try:
             cursor.execute("""
-                INSERT INTO washes (registration_number, staff_id, vehicle_type_id, total_amount, payment_method)
-                VALUES (%s, %s, %s, %s, %s) RETURNING wash_id
-            """, (reg, staff_id, vehicle_type_id, total, payment_method))
+                INSERT INTO washes 
+                (registration_number, staff_id, vehicle_type_id, total_amount, payment_method, cash_amount, mpesa_amount)
+                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING wash_id
+            """, (reg, staff_id, vehicle_type_id, total, payment_method, cash_amount, mpesa_amount))
             
             wash_id = cursor.fetchone()["wash_id"]
 
             for s in service_details:
                 commission = compute_commission(s["commission_rule"], s["amount"])
-
                 cursor.execute("""
                     INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
                     VALUES (%s, %s, %s, %s)
@@ -342,8 +372,8 @@ def record_wash():
             conn.rollback()
             cursor.close()
             conn.close()
-            flash("Something went wrong. Please try again or contact the administrator.", "danger")
-            print(f"Error: {e}")   # this still logs the real error for you
+            flash("Something went wrong while saving the wash. Please try again.", "danger")
+            print(f"Error saving wash: {e}")
             return render_template("record_wash.html", staff=staff, vehicle_types=vehicle_types)
 
     cursor.close()
