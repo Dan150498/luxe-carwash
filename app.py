@@ -1612,6 +1612,37 @@ def check_registration(reg):
     else:
         return {"exists": False}
 
+@app.route("/setup-staff-login")
+def setup_staff_login():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        # Allow 'staff' role
+        cursor.execute("""
+            ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check
+        """)
+        cursor.execute("""
+            ALTER TABLE users ADD CONSTRAINT users_role_check 
+            CHECK (role IN ('admin', 'cashier', 'staff'))
+        """)
+
+        # Link user to a staff member
+        cursor.execute("""
+            ALTER TABLE users 
+            ADD COLUMN IF NOT EXISTS staff_id INTEGER REFERENCES staff(staff_id)
+        """)
+
+        conn.commit()
+        message = "Staff login support added successfully!"
+    except Exception as e:
+        message = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return message
+
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
