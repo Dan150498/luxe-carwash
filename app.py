@@ -200,7 +200,7 @@ def login():
         conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
-            SELECT user_id, username, full_name, role, must_change_password
+            SELECT user_id, username, full_name, role, must_change_password, staff_id
             FROM users 
             WHERE username = %s AND password_hash = %s AND is_active = 1
         """, (username, hashed))
@@ -224,8 +224,12 @@ def login():
             
             if user["role"] == "admin":
                 return redirect(url_for("dashboard"))
-            else:
+            elif user["role"] == "cashier":
                 return redirect(url_for("cashier_home"))
+            elif user["role"] == "staff":
+                # Store staff_id in session
+                session["staff_id"] = user.get("staff_id")
+                return redirect(url_for("staff_dashboard"))
         else:
             flash("Invalid username or password", "danger")
 
@@ -1642,6 +1646,121 @@ def setup_staff_login():
     cursor.close()
     conn.close()
     return message
+
+@app.route("/create-staff-login/<int:staff_id>", methods=["GET", "POST"])
+def create_staff_login(staff_id):
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("SELECT staff_id, full_name FROM staff WHERE staff_id = %s", (staff_id,))
+    staff_member = cursor.fetchone()
+
+    if not staff_member:
+        cursor.close()
+        conn.close()
+        flash("Staff member not found.", "danger")
+        return redirect(url_for("manage_staff"))
+
+    # Check if login already exists
+    cursor.execute("SELECT user_id FROM users WHERE staff_id = %s", (staff_id,))
+    existing = cursor.fetchone()
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "").strip()
+
+        if not username or not password:
+            flash("Username and password are required.", "danger")
+        elif existing:
+            flash("This staff member already has a login account.", "danger")
+        else:
+            try:
+                cursor.execute("""
+                    INSERT INTO users (username, password_hash, full_name, role, staff_id)
+                    VALUES (%s, %s, %s, 'staff', %s)
+                """, (username, hash_password(password), staff_member["full_name"], staff_id))
+                conn.commit()
+                flash(f"Login created for {staff_member['full_name']} successfully!", "success")
+                cursor.close()
+                conn.close()
+                return redirect(url_for("manage_staff"))
+            except Exception as e:
+                flash("Username already exists. Please choose another.", "danger")
+                print(e)
+
+    cursor.close()
+    conn.close()
+    return render_template("create_staff_login.html", staff=staff_member, existing=existing)
+
+@app.route("/staff-dashboard")
+def staff_dashboard():
+    if "user_id" not in session or session["role"] != "staff":
+        return redirect(url_for("login"))
+
+    staff_id = session.get("staff_id")
+    if not staff_id:
+        flash("Your account is not linked to a staff member. Contact Admin.", "danger")
+        return redirect(url_for("logout"))
+
+    today = get_kenya_today() if 'get_kenya_today' in globals() else date.today()
+    
+    # Current week (Monday to Sunday)
+    start_of_week = today - timedelta(days=today.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Today's washes
+    cursor.execute("""
+        SELECT w.wash_id, w.registration_number, vt.name as vehicle_name,
+               w.total_amount, w.payment_method, w.wash_time
+        FROM washes w
+        JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
+        WHERE w.staff_id = %s AND w.wash_date = %s
+        ORDER BY w.wash_id DESC
+    """, (staff_id, today))
+    today_washes = cursor.fetchall()
+
+    # Today's commission
+    cursor.execute("""
+        SELECT COALESCE(SUM(ws.commission_amount), 0) as total
+        FROM wash_services ws
+        JOIN washes w ON ws.wash_id = w.wash_id
+        WHERE w.staff_id = %s AND w.wash_date = %s
+    """, (staff_id, today))
+    today_commission = cursor.fetchone()["total"]
+
+    # This week's commission
+    cursor.execute("""
+        SELECT COALESCE(SUM(ws.commission_amount), 0) as total
+        FROM wash_services ws
+        JOIN washes w ON ws.wash_id = w.wash_id
+        WHERE w.staff_id = %s AND w.wash_date BETWEEN %s AND %s
+    """, (staff_id, start_of_week, end_of_week))
+    week_commission = cursor.fetchone()["total"]
+
+    # Check if this week is already paid
+    cursor.execute("""
+        SELECT 1 FROM commission_payments 
+        WHERE staff_id = %s AND start_date = %s AND end_date = %s
+    """, (staff_id, start_of_week, end_of_week))
+    is_paid = cursor.fetchone() is not None
+
+    cursor.close()
+    conn.close()
+
+    return render_template("staff_dashboard.html",
+                           today_washes=today_washes,
+                           today_commission=today_commission,
+                           week_commission=week_commission,
+                           is_paid=is_paid,
+                           today=today,
+                           start_of_week=start_of_week,
+                           end_of_week=end_of_week)
 
 
 if __name__ == "__main__":
