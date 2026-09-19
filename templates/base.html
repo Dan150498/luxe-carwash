@@ -17,23 +17,27 @@
             <nav class="sidebar-nav">
                 {% if session.get('role') == 'admin' %}
                     <a href="{{ url_for('dashboard') }}" class="nav-item">Dashboard</a>
-                    <a href="{{ url_for('record_wash') }}" class="nav-item">Record Wash</a>
+                    <a href="{{ url_for('start_wash') }}" class="nav-item">Start Wash</a>
+                    <a href="{{ url_for('pending_washes') }}" class="nav-item">Pending Washes</a>
+                    <a href="{{ url_for('record_wash') }}" class="nav-item">Record Wash (Full)</a>
                     <a href="{{ url_for('todays_washes') }}" class="nav-item">Today's Washes</a>
                     <a href="{{ url_for('search') }}" class="nav-item">Search</a>
                     <a href="{{ url_for('reports') }}" class="nav-item">Reports</a>
-                    <a href="{{ url_for('manage_staff') }}" class="nav-item">Manage Staff</a>
-                    <a href="{{ url_for('change_prices') }}" class="nav-item">Change Prices</a>
-                    <a href="{{ url_for('manage_types_services') }}" class="nav-item">Types & Services</a>
                     <a href="{{ url_for('daily_commissions') }}" class="nav-item">Daily Commissions</a>
                     <a href="{{ url_for('weekly_commissions') }}" class="nav-item">Weekly Payout</a>
                     <a href="{{ url_for('staff_performance') }}" class="nav-item">Performance</a>
+                    <a href="{{ url_for('manage_staff') }}" class="nav-item">Manage Staff</a>
+                    <a href="{{ url_for('change_prices') }}" class="nav-item">Change Prices</a>
                     <a href="{{ url_for('extra_approvals') }}" class="nav-item">Extra Approvals</a>
                 
                 {% elif session.get('role') == 'cashier' %}
                     <a href="{{ url_for('cashier_home') }}" class="nav-item">Home</a>
-                    <a href="{{ url_for('record_wash') }}" class="nav-item">Record Wash</a>
+                    <a href="{{ url_for('start_wash') }}" class="nav-item">Start Wash</a>
+                    <a href="{{ url_for('pending_washes') }}" class="nav-item">Pending Washes</a>
+                    <a href="{{ url_for('record_wash') }}" class="nav-item">Record Wash (Full)</a>
                     <a href="{{ url_for('todays_washes') }}" class="nav-item">Today's Washes</a>
                     <a href="{{ url_for('search') }}" class="nav-item">Search</a>
+
                 {% elif session.get('role') == 'staff' %}
                     <a href="{{ url_for('staff_dashboard') }}" class="nav-item">My Dashboard</a>
                    

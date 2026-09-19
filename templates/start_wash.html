@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Start Wash - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Start Wash (No Payment Yet)</h2>
+    <p style="color:#888; margin-bottom:20px;">Enter car details now. Payment will be collected later at Checkout.</p>
+
+    <form method="POST" id="washForm">
+        <!-- Registration Number -->
+        <div class="form-group">
+            <label>Car Registration Number</label>
+            <input type="text" name="registration" id="registration" required 
+                   placeholder="e.g. KDE 801F" style="text-transform: uppercase;"
+                   onblur="checkRegistration()">
+            <p id="reg-message" style="font-size:0.85rem; margin-top:6px;"></p>
+        </div>
+
+        <!-- Staff -->
+        <div class="form-group">
+            <label>Staff who washed the car</label>
+            <select name="staff_id" required
+                    style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                <option value="">-- Select Staff --</option>
+                {% for s in staff %}
+                    <option value="{{ s.staff_id }}">{{ s.full_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Vehicle Type -->
+        <div class="form-group">
+            <label>Vehicle Type</label>
+            <select name="vehicle_type_id" id="vehicle_type" required
+                    style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                <option value="">-- Select Vehicle Type --</option>
+                {% for v in vehicle_types %}
+                    <option value="{{ v.vehicle_type_id }}">{{ v.name }}</option>
+                {% endfor %}
+            </select>
+            <input type="hidden" name="vehicle_type_id" id="vehicle_type_hidden">
+        </div>
+
+        <!-- Services -->
+        <div class="form-group">
+            <label>Select Services</label>
+            <div id="services-list" style="background:#111; border:1px solid #333; border-radius:6px; padding:15px; min-height:60px;">
+                <p style="color:#888;">Please select a vehicle type first...</p>
+            </div>
+        </div>
+
+        <!-- Buttons -->
+        <div style="margin-top:25px;">
+            <button type="submit" class="btn">Start Wash (No Payment Yet)</button>
+            <a href="{{ url_for('pending_washes') }}" class="btn" style="background:#333; margin-left:10px;">View Pending</a>
+        </div>
+    </form>
+</div>
+
+<script>
+    // Load services when vehicle type changes
+    document.getElementById('vehicle_type').addEventListener('change', function() {
+        const vehicleId = this.value;
+        document.getElementById('vehicle_type_hidden').value = vehicleId;
+
+        const servicesDiv = document.getElementById('services-list');
+
+        if (!vehicleId) {
+            servicesDiv.innerHTML = '<p style="color:#888;">Please select a vehicle type first...</p>';
+            return;
+        }
+
+        fetch(`/get-services/${vehicleId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.length === 0) {
+                    servicesDiv.innerHTML = '<p style="color:#ff6b6b;">No prices set for this vehicle type.</p>';
+                    return;
+                }
+
+                let html = '';
+                data.forEach(service => {
+                    html += `
+                        <label style="display:block; margin-bottom:10px; cursor:pointer;">
+                            <input type="checkbox" name="services" value="${service.service_id}" 
+                                   data-amount="${service.amount}" style="margin-right:10px;">
+                            ${service.name} — <span style="color:#d4af37;">KSh ${service.amount}</span>
+                        </label>
+                    `;
+                });
+                servicesDiv.innerHTML = html;
+            });
+    });
+
+    // Check registration and lock vehicle type if known
+    function checkRegistration() {
+        const regInput = document.getElementById('registration');
+        const vehicleSelect = document.getElementById('vehicle_type');
+        const hiddenField = document.getElementById('vehicle_type_hidden');
+        const message = document.getElementById('reg-message');
+        const reg = regInput.value.trim().toUpperCase();
+
+        if (!reg) {
+            message.innerHTML = '';
+            vehicleSelect.disabled = false;
+            hiddenField.value = '';
+            return;
+        }
+
+        fetch(`/check-registration/${encodeURIComponent(reg)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.exists) {
+                    vehicleSelect.value = data.vehicle_type_id;
+                    vehicleSelect.disabled = true;
+                    hiddenField.value = data.vehicle_type_id;
+                    message.innerHTML = `<span style="color:#51cf66;">This vehicle is registered as <strong>${data.vehicle_name}</strong>. Type is locked.</span>`;
+                    vehicleSelect.dispatchEvent(new Event('change'));
+                } else {
+                    vehicleSelect.disabled = false;
+                    hiddenField.value = '';
+                    message.innerHTML = `<span style="color:#888;">New vehicle – please select the type.</span>`;
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                message.innerHTML = '';
+            });
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Pending Washes - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Pending Washes (Waiting for Payment)</h2>
+    <p style="color:#888; margin-bottom:20px;">These cars have been washed but payment has not been collected yet.</p>
+
+    <div style="margin-bottom:20px;">
+        <a href="{{ url_for('start_wash') }}" class="btn">+ Start New Wash</a>
+    </div>
+
+    {% if pending %}
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Registration</th>
+                        <th>Staff</th>
+                        <th>Vehicle</th>
+                        <th>Amount</th>
+                        <th>Time</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for w in pending %}
+                    <tr>
+                        <td>{{ w.wash_id }}</td>
+                        <td>{{ w.registration_number }}</td>
+                        <td>{{ w.staff_name }}</td>
+                        <td>{{ w.vehicle_name }}</td>
+                        <td style="color:#d4af37; font-weight:600;">KSh {{ w.total_amount }}</td>
+                        <td>{{ w.wash_time }}</td>
+                        <td>
+                            <a href="{{ url_for('checkout', wash_id=w.wash_id) }}" class="btn" style="padding:6px 14px; font-size:0.9rem;">
+                                Checkout
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p style="color:#888;">No pending washes at the moment.</p>
+    {% endif %}
+</div>
+{% endblock %}
