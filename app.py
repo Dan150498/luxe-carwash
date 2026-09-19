@@ -1762,6 +1762,29 @@ def staff_dashboard():
                            start_of_week=start_of_week,
                            end_of_week=end_of_week)
 
+@app.route("/setup-pending-wash")
+def setup_pending_wash():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            ALTER TABLE washes 
+            ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'completed'
+        """)
+        # Make sure existing washes are marked as completed
+        cursor.execute("""
+            UPDATE washes SET status = 'completed' WHERE status IS NULL
+        """)
+        conn.commit()
+        message = "Pending wash support added successfully!"
+    except Exception as e:
+        message = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return message
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
