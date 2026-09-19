@@ -1786,5 +1786,167 @@ def setup_pending_wash():
     conn.close()
     return message
 
+@app.route("/start-wash", methods=["GET", "POST"])
+def start_wash():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("SELECT staff_id, full_name FROM staff WHERE is_active = 1 ORDER BY full_name")
+    staff = cursor.fetchall()
+
+    cursor.execute("SELECT vehicle_type_id, name FROM vehicle_types ORDER BY vehicle_type_id")
+    vehicle_types = cursor.fetchall()
+
+    if request.method == "POST":
+        reg = request.form.get("registration", "").strip().upper()
+        staff_id = request.form.get("staff_id")
+        vehicle_type_id = request.form.get("vehicle_type_id") or request.form.get("vehicle_type_id_hidden")
+        selected_services = request.form.getlist("services")
+
+        if not reg or not staff_id or not vehicle_type_id or not selected_services:
+            flash("Please fill all required fields and select at least one service.", "danger")
+            cursor.close()
+            conn.close()
+            return render_template("start_wash.html", staff=staff, vehicle_types=vehicle_types)
+
+        total = 0
+        service_details = []
+        for sid in selected_services:
+            cursor.execute("""
+                SELECT s.service_id, s.name, s.commission_rule, p.amount
+                FROM prices p
+                JOIN services s ON p.service_id = s.service_id
+                WHERE p.vehicle_type_id = %s AND s.service_id = %s
+            """, (vehicle_type_id, sid))
+            row = cursor.fetchone()
+            if row:
+                total += row["amount"]
+                service_details.append(row)
+
+        if not service_details:
+            flash("No valid services selected.", "danger")
+            cursor.close()
+            conn.close()
+            return render_template("start_wash.html", staff=staff, vehicle_types=vehicle_types)
+
+        try:
+            cursor.execute("""
+                INSERT INTO washes 
+                (registration_number, staff_id, vehicle_type_id, total_amount, payment_method, cash_amount, mpesa_amount, status)
+                VALUES (%s, %s, %s, %s, 'Pending', 0, 0, 'pending') RETURNING wash_id
+            """, (reg, staff_id, vehicle_type_id, total))
+            
+            wash_id = cursor.fetchone()["wash_id"]
+
+            for s in service_details:
+                commission = compute_commission(s["commission_rule"], s["amount"])
+                cursor.execute("""
+                    INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
+                    VALUES (%s, %s, %s, %s)
+                """, (wash_id, s["service_id"], s["amount"], commission))
+
+            conn.commit()
+            flash(f"Wash started successfully! (ID: {wash_id}) - Waiting for payment.", "success")
+            cursor.close()
+            conn.close()
+            return redirect(url_for("pending_washes"))
+
+        except Exception as e:
+            conn.rollback()
+            cursor.close()
+            conn.close()
+            flash("Something went wrong. Please try again.", "danger")
+            print(f"Error: {e}")
+            return render_template("start_wash.html", staff=staff, vehicle_types=vehicle_types)
+
+    cursor.close()
+    conn.close()
+    return render_template("start_wash.html", staff=staff, vehicle_types=vehicle_types)
+
+@app.route("/pending-washes")
+def pending_washes():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("""
+        SELECT w.wash_id, w.registration_number, s.full_name as staff_name,
+               vt.name as vehicle_name, w.total_amount, w.wash_time
+        FROM washes w
+        JOIN staff s ON w.staff_id = s.staff_id
+        JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
+        WHERE w.status = 'pending'
+        ORDER BY w.wash_id ASC
+    """)
+    pending = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return render_template("pending_washes.html", pending=pending)
+
+@app.route("/checkout/<int:wash_id>", methods=["GET", "POST"])
+def checkout(wash_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("""
+        SELECT w.*, s.full_name as staff_name, vt.name as vehicle_name
+        FROM washes w
+        JOIN staff s ON w.staff_id = s.staff_id
+        JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
+        WHERE w.wash_id = %s AND w.status = 'pending'
+    """, (wash_id,))
+    wash = cursor.fetchone()
+
+    if not wash:
+        cursor.close()
+        conn.close()
+        flash("Wash not found or already paid.", "danger")
+        return redirect(url_for("pending_washes"))
+
+    if request.method == "POST":
+        cash_raw = request.form.get("cash_amount", "0").strip()
+        mpesa_raw = request.form.get("mpesa_amount", "0").strip()
+
+        try:
+            cash_amount = int(cash_raw) if cash_raw else 0
+            mpesa_amount = int(mpesa_raw) if mpesa_raw else 0
+        except:
+            cash_amount = 0
+            mpesa_amount = 0
+
+        if cash_amount + mpesa_amount != wash["total_amount"]:
+            flash(f"Cash + M-Pesa must equal KSh {wash['total_amount']}", "danger")
+        else:
+            if cash_amount > 0 and mpesa_amount > 0:
+                payment_method = "Mixed"
+            elif mpesa_amount > 0:
+                payment_method = "M-Pesa"
+            else:
+                payment_method = "Cash"
+
+            cursor.execute("""
+                UPDATE washes 
+                SET cash_amount = %s, mpesa_amount = %s, payment_method = %s, status = 'completed'
+                WHERE wash_id = %s
+            """, (cash_amount, mpesa_amount, payment_method, wash_id))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            flash("Payment completed successfully!", "success")
+            return redirect(url_for("view_receipt", wash_id=wash_id))
+
+    cursor.close()
+    conn.close()
+    return render_template("checkout.html", wash=wash)
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
