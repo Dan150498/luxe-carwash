@@ -12,13 +12,6 @@ from io import BytesIO
 from datetime import date, datetime, timedelta, time
 import pytz
 
-UPLOAD_FOLDER = os.path.join("static", "uploads", "products")
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB max
-
-# Create folder if it doesn't exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -46,10 +39,21 @@ def get_kenya_now():
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-in-production")
 
+
+
 from datetime import timedelta
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=6)  # session expires after 6 hours
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
+
+
+UPLOAD_FOLDER = os.path.join("static", "uploads", "products")
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB max
+
+# Create folder if it doesn't exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # ====================== DATABASE ======================
 DATABASE_URL = os.environ.get("DATABASE_URL")
