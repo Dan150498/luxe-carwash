@@ -2025,23 +2025,50 @@ def inventory_products():
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        category_id = request.form.get("category_id")
-        cost_price = request.form.get("cost_price", "0")
-        selling_price = request.form.get("selling_price", "0")
-        stock_qty = request.form.get("stock_qty", "0")
-        low_stock_level = request.form.get("low_stock_level", "5")
+        action = request.form.get("action")
 
-        try:
-            cursor.execute("""
-                INSERT INTO products (name, category_id, cost_price, selling_price, stock_qty, low_stock_level)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (name, category_id, int(cost_price), int(selling_price), int(stock_qty), int(low_stock_level)))
-            conn.commit()
-            flash(f"Product '{name}' added successfully!", "success")
-        except Exception as e:
-            flash("Error adding product.", "danger")
-            print(e)
+        if action == "add":
+            name = request.form.get("name", "").strip()
+            category_id = request.form.get("category_id")
+            cost_price = int(request.form.get("cost_price", 0) or 0)
+            selling_price = int(request.form.get("selling_price", 0) or 0)
+            stock_qty = int(request.form.get("stock_qty", 0) or 0)
+            low_stock_level = int(request.form.get("low_stock_level", 5) or 5)
+            image_url = request.form.get("image_url", "").strip() or None
+
+            try:
+                cursor.execute("""
+                    INSERT INTO products 
+                    (name, category_id, cost_price, selling_price, stock_qty, low_stock_level, image_url)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (name, category_id, cost_price, selling_price, stock_qty, low_stock_level, image_url))
+                conn.commit()
+                flash(f"Product '{name}' added successfully!", "success")
+            except Exception as e:
+                flash("Error adding product.", "danger")
+                print(e)
+
+        elif action == "edit":
+            product_id = request.form.get("product_id")
+            name = request.form.get("name", "").strip()
+            category_id = request.form.get("category_id")
+            cost_price = int(request.form.get("cost_price", 0) or 0)
+            selling_price = int(request.form.get("selling_price", 0) or 0)
+            low_stock_level = int(request.form.get("low_stock_level", 5) or 5)
+            image_url = request.form.get("image_url", "").strip() or None
+
+            try:
+                cursor.execute("""
+                    UPDATE products 
+                    SET name = %s, category_id = %s, cost_price = %s, 
+                        selling_price = %s, low_stock_level = %s, image_url = %s
+                    WHERE product_id = %s
+                """, (name, category_id, cost_price, selling_price, low_stock_level, image_url, product_id))
+                conn.commit()
+                flash("Product updated successfully!", "success")
+            except Exception as e:
+                flash("Error updating product.", "danger")
+                print(e)
 
     cursor.execute("SELECT category_id, name FROM product_categories ORDER BY name")
     categories = cursor.fetchall()
@@ -2059,6 +2086,25 @@ def inventory_products():
     conn.close()
 
     return render_template("inventory_products.html", products=products, categories=categories)
+
+
+@app.route("/inventory/delete-product/<int:product_id>")
+def delete_product(product_id):
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE products SET is_active = 0 WHERE product_id = %s", (product_id,))
+        conn.commit()
+        flash("Product deleted successfully.", "success")
+    except Exception as e:
+        flash("Error deleting product.", "danger")
+        print(e)
+    cursor.close()
+    conn.close()
+    return redirect(url_for("inventory_products"))
 
 @app.route("/inventory/stock-in", methods=["GET", "POST"])
 def stock_in():
@@ -2224,6 +2270,26 @@ def inventory_report():
                            total_value=total_value,
                            low_stock_count=low_stock_count,
                            recent_sales=recent_sales)
+
+@app.route("/setup-product-image")
+def setup_product_image():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            ALTER TABLE products 
+            ADD COLUMN IF NOT EXISTS image_url TEXT
+        """)
+        conn.commit()
+        message = "Product image column added successfully!"
+    except Exception as e:
+        message = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return message
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
