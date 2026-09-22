@@ -2059,5 +2059,123 @@ def inventory_products():
 
     return render_template("inventory_products.html", products=products, categories=categories)
 
+@app.route("/inventory/stock-in", methods=["GET", "POST"])
+def stock_in():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        product_id = request.form.get("product_id")
+        quantity = request.form.get("quantity", "0")
+        unit_cost = request.form.get("unit_cost", "0")
+        notes = request.form.get("notes", "").strip()
+
+        try:
+            quantity = int(quantity)
+            unit_cost = int(unit_cost)
+            total_cost = quantity * unit_cost
+
+            # Update stock
+            cursor.execute("""
+                UPDATE products 
+                SET stock_qty = stock_qty + %s,
+                    cost_price = %s
+                WHERE product_id = %s
+            """, (quantity, unit_cost, product_id))
+
+            # Record movement
+            cursor.execute("""
+                INSERT INTO stock_movements 
+                (product_id, movement_type, quantity, unit_cost, total_cost, notes, created_by)
+                VALUES (%s, 'in', %s, %s, %s, %s, %s)
+            """, (product_id, quantity, unit_cost, total_cost, notes, session["user_id"]))
+
+            conn.commit()
+            flash("Stock added successfully!", "success")
+        except Exception as e:
+            flash("Error adding stock.", "danger")
+            print(e)
+
+    cursor.execute("""
+        SELECT product_id, name, stock_qty 
+        FROM products 
+        WHERE is_active = 1 
+        ORDER BY name
+    """)
+    products = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return render_template("stock_in.html", products=products)
+
+@app.route("/inventory/sell", methods=["GET", "POST"])
+def sell_product():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        product_id = request.form.get("product_id")
+        quantity = request.form.get("quantity", "1")
+        cash_amount = request.form.get("cash_amount", "0")
+        mpesa_amount = request.form.get("mpesa_amount", "0")
+
+        try:
+            quantity = int(quantity)
+            cash_amount = int(cash_amount or 0)
+            mpesa_amount = int(mpesa_amount or 0)
+
+            cursor.execute("SELECT * FROM products WHERE product_id = %s", (product_id,))
+            product = cursor.fetchone()
+
+            if not product:
+                flash("Product not found.", "danger")
+            elif product["stock_qty"] < quantity:
+                flash(f"Not enough stock. Only {product['stock_qty']} available.", "danger")
+            else:
+                total = product["selling_price"] * quantity
+
+                if cash_amount + mpesa_amount != total:
+                    flash(f"Cash + M-Pesa must equal KSh {total}", "danger")
+                else:
+                    # Reduce stock
+                    cursor.execute("""
+                        UPDATE products SET stock_qty = stock_qty - %s 
+                        WHERE product_id = %s
+                    """, (quantity, product_id))
+
+                    payment_method = "Mixed" if cash_amount > 0 and mpesa_amount > 0 else ("M-Pesa" if mpesa_amount > 0 else "Cash")
+
+                    cursor.execute("""
+                        INSERT INTO stock_movements 
+                        (product_id, movement_type, quantity, selling_price, payment_method, 
+                         cash_amount, mpesa_amount, created_by)
+                        VALUES (%s, 'sale', %s, %s, %s, %s, %s, %s)
+                    """, (product_id, quantity, product["selling_price"], payment_method, 
+                          cash_amount, mpesa_amount, session["user_id"]))
+
+                    conn.commit()
+                    flash(f"Sold {quantity} x {product['name']} for KSh {total}", "success")
+        except Exception as e:
+            flash("Error processing sale.", "danger")
+            print(e)
+
+    cursor.execute("""
+        SELECT product_id, name, selling_price, stock_qty 
+        FROM products 
+        WHERE is_active = 1 AND stock_qty > 0
+        ORDER BY name
+    """)
+    products = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return render_template("sell_product.html", products=products)
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
