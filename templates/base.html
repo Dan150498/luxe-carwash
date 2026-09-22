@@ -16,27 +16,45 @@
 
             <nav class="sidebar-nav">
                 {% if session.get('role') == 'admin' %}
+                    <div class="nav-section">MAIN</div>
                     <a href="{{ url_for('dashboard') }}" class="nav-item">Dashboard</a>
                     <a href="{{ url_for('start_wash') }}" class="nav-item">Start Wash</a>
                     <a href="{{ url_for('pending_washes') }}" class="nav-item">Pending Washes</a>
                     <a href="{{ url_for('record_wash') }}" class="nav-item">Record Wash (Full)</a>
                     <a href="{{ url_for('todays_washes') }}" class="nav-item">Today's Washes</a>
                     <a href="{{ url_for('search') }}" class="nav-item">Search</a>
-                    <a href="{{ url_for('reports') }}" class="nav-item">Reports</a>
+
+                    <div class="nav-section">COMMISSIONS</div>
                     <a href="{{ url_for('daily_commissions') }}" class="nav-item">Daily Commissions</a>
                     <a href="{{ url_for('weekly_commissions') }}" class="nav-item">Weekly Payout</a>
                     <a href="{{ url_for('staff_performance') }}" class="nav-item">Performance</a>
+
+                    <div class="nav-section">INVENTORY</div>
+                    <a href="{{ url_for('inventory_products') }}" class="nav-item">Products</a>
+                    <a href="{{ url_for('stock_in') }}" class="nav-item">Stock In</a>
+                    <a href="{{ url_for('sell_product') }}" class="nav-item">Sell Product</a>
+                    <a href="{{ url_for('inventory_report') }}" class="nav-item">Stock Report</a>
+
+                    <div class="nav-section">MANAGEMENT</div>
                     <a href="{{ url_for('manage_staff') }}" class="nav-item">Manage Staff</a>
                     <a href="{{ url_for('change_prices') }}" class="nav-item">Change Prices</a>
+                    <a href="{{ url_for('manage_types_services') }}" class="nav-item">Types & Services</a>
                     <a href="{{ url_for('extra_approvals') }}" class="nav-item">Extra Approvals</a>
+                    <a href="{{ url_for('reports') }}" class="nav-item">Reports</a>
+
+
                 
                 {% elif session.get('role') == 'cashier' %}
+                    <div class="nav-section">MAIN</div>
                     <a href="{{ url_for('cashier_home') }}" class="nav-item">Home</a>
                     <a href="{{ url_for('start_wash') }}" class="nav-item">Start Wash</a>
                     <a href="{{ url_for('pending_washes') }}" class="nav-item">Pending Washes</a>
-                    <a href="{{ url_for('record_wash') }}" class="nav-item">Record Wash (Full)</a>
+                    <a href="{{ url_for('record_wash') }}" class="nav-item">Record Wash</a>
                     <a href="{{ url_for('todays_washes') }}" class="nav-item">Today's Washes</a>
                     <a href="{{ url_for('search') }}" class="nav-item">Search</a>
+
+                    <div class="nav-section">INVENTORY</div>
+                    <a href="{{ url_for('sell_product') }}" class="nav-item">Sell Product</a>    
 
                 {% elif session.get('role') == 'staff' %}
                     <a href="{{ url_for('staff_dashboard') }}" class="nav-item">My Dashboard</a>
