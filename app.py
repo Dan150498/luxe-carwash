@@ -1948,5 +1948,72 @@ def checkout(wash_id):
     conn.close()
     return render_template("checkout.html", wash=wash)
 
+@app.route("/setup-inventory")
+def setup_inventory():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        # Categories
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS product_categories (
+                category_id SERIAL PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL
+            )
+        """)
+
+        # Products
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS products (
+                product_id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                category_id INTEGER REFERENCES product_categories(category_id),
+                cost_price INTEGER DEFAULT 0,
+                selling_price INTEGER NOT NULL,
+                stock_qty INTEGER DEFAULT 0,
+                low_stock_level INTEGER DEFAULT 5,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Stock movements (in, out, adjustment, sale)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS stock_movements (
+                movement_id SERIAL PRIMARY KEY,
+                product_id INTEGER REFERENCES products(product_id),
+                movement_type TEXT NOT NULL,  -- 'in', 'out', 'sale', 'adjustment'
+                quantity INTEGER NOT NULL,
+                unit_cost INTEGER DEFAULT 0,
+                total_cost INTEGER DEFAULT 0,
+                selling_price INTEGER DEFAULT 0,
+                payment_method TEXT,
+                cash_amount INTEGER DEFAULT 0,
+                mpesa_amount INTEGER DEFAULT 0,
+                reference TEXT,
+                notes TEXT,
+                created_by INTEGER REFERENCES users(user_id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Default categories
+        categories = ["Beverages", "Car Care Products", "Accessories", "Chemicals"]
+        for cat in categories:
+            cursor.execute("""
+                INSERT INTO product_categories (name) VALUES (%s)
+                ON CONFLICT (name) DO NOTHING
+            """, (cat,))
+
+        conn.commit()
+        message = "Inventory tables created successfully!"
+    except Exception as e:
+        message = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return message
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
