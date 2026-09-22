@@ -8,6 +8,7 @@
 
     <!-- Add Product Form -->
     <form method="POST" style="background:#111; padding:20px; border-radius:8px; margin-bottom:30px; border:1px solid #333;">
+        <input type="hidden" name="action" value="add">
         <h3 style="color:#d4af37; margin-bottom:15px; font-size:1.1rem;">Add New Product</h3>
         
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:15px;">
@@ -46,6 +47,11 @@
                 <input type="number" name="low_stock_level" value="5" min="0"
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
+            <div class="form-group" style="margin-bottom:0; grid-column: 1 / -1;">
+                <label>Image URL (optional)</label>
+                <input type="url" name="image_url" placeholder="https://example.com/image.jpg"
+                       style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
         </div>
         <button type="submit" class="btn" style="margin-top:15px;">Add Product</button>
     </form>
@@ -56,43 +62,117 @@
         <table>
             <thead>
                 <tr>
+                    <th>Image</th>
                     <th>Name</th>
                     <th>Category</th>
                     <th>Cost</th>
                     <th>Selling Price</th>
                     <th>Stock</th>
-                    <th>Status</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for p in products %}
                 <tr>
+                    <td>
+                        {% if p.image_url %}
+                            <img src="{{ p.image_url }}" alt="{{ p.name }}" 
+                                 style="width:50px; height:50px; object-fit:cover; border-radius:6px;">
+                        {% else %}
+                            <span style="color:#666;">—</span>
+                        {% endif %}
+                    </td>
                     <td>{{ p.name }}</td>
                     <td>{{ p.category_name or '-' }}</td>
                     <td>KSh {{ p.cost_price }}</td>
                     <td style="color:#d4af37;">KSh {{ p.selling_price }}</td>
                     <td>
                         {% if p.stock_qty <= p.low_stock_level %}
-                            <span style="color:#ff6b6b; font-weight:600;">{{ p.stock_qty }} (Low)</span>
+                            <span style="color:#ff6b6b; font-weight:600;">{{ p.stock_qty }}</span>
                         {% else %}
                             {{ p.stock_qty }}
                         {% endif %}
                     </td>
                     <td>
-                        {% if p.stock_qty <= p.low_stock_level %}
-                            <span style="color:#ff6b6b;">Low Stock</span>
-                        {% else %}
-                            <span style="color:#51cf66;">OK</span>
-                        {% endif %}
+                        <a href="#" onclick="openEditModal({{ p.product_id }}, '{{ p.name }}', {{ p.category_id or 'null' }}, {{ p.cost_price }}, {{ p.selling_price }}, {{ p.low_stock_level }}, '{{ p.image_url or '' }}')"
+                           style="color:#66d9ef; margin-right:10px;">Edit</a>
+                        <a href="{{ url_for('delete_product', product_id=p.product_id) }}"
+                           style="color:#ff6b6b;"
+                           onclick="return confirm('Delete this product?')">Delete</a>
                     </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="6" style="color:#888;">No products yet. Add your first product above.</td>
+                    <td colspan="7" style="color:#888;">No products yet.</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
+
+<!-- Edit Modal -->
+<div id="editModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:2000; align-items:center; justify-content:center;">
+    <div style="background:#1a1a1a; border:1px solid #d4af37; border-radius:10px; padding:25px; width:90%; max-width:500px;">
+        <h3 style="color:#d4af37; margin-bottom:20px;">Edit Product</h3>
+        <form method="POST">
+            <input type="hidden" name="action" value="edit">
+            <input type="hidden" name="product_id" id="edit_product_id">
+
+            <div class="form-group">
+                <label>Product Name</label>
+                <input type="text" name="name" id="edit_name" required
+                       style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <div class="form-group">
+                <label>Category</label>
+                <select name="category_id" id="edit_category" required
+                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+                    {% for c in categories %}
+                        <option value="{{ c.category_id }}">{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Cost Price</label>
+                <input type="number" name="cost_price" id="edit_cost" min="0"
+                       style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <div class="form-group">
+                <label>Selling Price</label>
+                <input type="number" name="selling_price" id="edit_selling" min="0" required
+                       style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <div class="form-group">
+                <label>Low Stock Level</label>
+                <input type="number" name="low_stock_level" id="edit_low" min="0"
+                       style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <div class="form-group">
+                <label>Image URL</label>
+                <input type="url" name="image_url" id="edit_image"
+                       style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+
+            <button type="submit" class="btn">Save Changes</button>
+            <button type="button" class="btn" style="background:#333; margin-left:10px;" onclick="closeEditModal()">Cancel</button>
+        </form>
+    </div>
+</div>
+
+<script>
+function openEditModal(id, name, categoryId, cost, selling, low, image) {
+    document.getElementById('edit_product_id').value = id;
+    document.getElementById('edit_name').value = name;
+    document.getElementById('edit_category').value = categoryId;
+    document.getElementById('edit_cost').value = cost;
+    document.getElementById('edit_selling').value = selling;
+    document.getElementById('edit_low').value = low;
+    document.getElementById('edit_image').value = image;
+    document.getElementById('editModal').style.display = 'flex';
+}
+function closeEditModal() {
+    document.getElementById('editModal').style.display = 'none';
+}
+</script>
 {% endblock %}
