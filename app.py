@@ -1948,6 +1948,7 @@ def checkout(wash_id):
     conn.close()
     return render_template("checkout.html", wash=wash)
 
+#========================== INVENTORY     ====================
 @app.route("/setup-inventory")
 def setup_inventory():
     if "user_id" not in session or session["role"] != "admin":
@@ -2176,6 +2177,53 @@ def sell_product():
     conn.close()
 
     return render_template("sell_product.html", products=products)
+
+@app.route("/inventory/report")
+def inventory_report():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Current stock status
+    cursor.execute("""
+        SELECT p.name, c.name as category, p.cost_price, p.selling_price, 
+               p.stock_qty, p.low_stock_level,
+               (p.stock_qty * p.cost_price) as stock_value
+        FROM products p
+        LEFT JOIN product_categories c ON p.category_id = c.category_id
+        WHERE p.is_active = 1
+        ORDER BY p.name
+    """)
+    products = cursor.fetchall()
+
+    total_items = sum(p["stock_qty"] for p in products)
+    total_value = sum(p["stock_value"] for p in products)
+    low_stock_count = sum(1 for p in products if p["stock_qty"] <= p["low_stock_level"])
+
+    # Recent sales (last 30 days)
+    cursor.execute("""
+        SELECT p.name, SUM(m.quantity) as qty_sold, 
+               SUM(m.quantity * m.selling_price) as revenue
+        FROM stock_movements m
+        JOIN products p ON m.product_id = p.product_id
+        WHERE m.movement_type = 'sale' 
+          AND m.created_at >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY p.name
+        ORDER BY qty_sold DESC
+    """)
+    recent_sales = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template("inventory_report.html",
+                           products=products,
+                           total_items=total_items,
+                           total_value=total_value,
+                           low_stock_count=low_stock_count,
+                           recent_sales=recent_sales)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
