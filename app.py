@@ -2015,5 +2015,49 @@ def setup_inventory():
     conn.close()
     return message
 
+@app.route("/inventory/products", methods=["GET", "POST"])
+def inventory_products():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        category_id = request.form.get("category_id")
+        cost_price = request.form.get("cost_price", "0")
+        selling_price = request.form.get("selling_price", "0")
+        stock_qty = request.form.get("stock_qty", "0")
+        low_stock_level = request.form.get("low_stock_level", "5")
+
+        try:
+            cursor.execute("""
+                INSERT INTO products (name, category_id, cost_price, selling_price, stock_qty, low_stock_level)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (name, category_id, int(cost_price), int(selling_price), int(stock_qty), int(low_stock_level)))
+            conn.commit()
+            flash(f"Product '{name}' added successfully!", "success")
+        except Exception as e:
+            flash("Error adding product.", "danger")
+            print(e)
+
+    cursor.execute("SELECT category_id, name FROM product_categories ORDER BY name")
+    categories = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT p.*, c.name as category_name
+        FROM products p
+        LEFT JOIN product_categories c ON p.category_id = c.category_id
+        WHERE p.is_active = 1
+        ORDER BY p.name
+    """)
+    products = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template("inventory_products.html", products=products, categories=categories)
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
