@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Stock In - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:600px;">
+    <h2>Stock In</h2>
+    <p style="color:#888; margin-bottom:25px;">Record new stock received.</p>
+
+    <form method="POST">
+        <div class="form-group">
+            <label>Product</label>
+            <select name="product_id" required
+                    style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                <option value="">-- Select Product --</option>
+                {% for p in products %}
+                    <option value="{{ p.product_id }}">{{ p.name }} (Current: {{ p.stock_qty }})</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Quantity Received</label>
+            <input type="number" name="quantity" required min="1"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Unit Cost (KSh)</label>
+            <input type="number" name="unit_cost" value="0" min="0"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Notes (optional)</label>
+            <input type="text" name="notes"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <button type="submit" class="btn">Add Stock</button>
+    </form>
+</div>
+{% endblock %}
