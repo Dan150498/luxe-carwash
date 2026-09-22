@@ -1,5 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
 from datetime import date, datetime, timedelta
+from werkzeug.utils import secure_filename
+import uuid
 import psycopg2
 import psycopg2.extras
 import hashlib
@@ -9,6 +11,26 @@ import pandas as pd
 from io import BytesIO
 from datetime import date, datetime, timedelta, time
 import pytz
+
+UPLOAD_FOLDER = os.path.join("static", "uploads", "products")
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB max
+
+# Create folder if it doesn't exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def save_product_image(file):
+    if file and allowed_file(file.filename):
+        ext = file.filename.rsplit(".", 1)[1].lower()
+        filename = f"{uuid.uuid4().hex}.{ext}"
+        filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        file.save(filepath)
+        return f"/static/uploads/products/{filename}"
+    return None
 
 # Kenyan timezone
 EAT = pytz.timezone("Africa/Nairobi")
@@ -2034,7 +2056,13 @@ def inventory_products():
             selling_price = int(request.form.get("selling_price", 0) or 0)
             stock_qty = int(request.form.get("stock_qty", 0) or 0)
             low_stock_level = int(request.form.get("low_stock_level", 5) or 5)
-            image_url = request.form.get("image_url", "").strip() or None
+
+            # Handle image upload
+            image_url = None
+            if "product_image" in request.files:
+                file = request.files["product_image"]
+                if file.filename:
+                    image_url = save_product_image(file)
 
             try:
                 cursor.execute("""
@@ -2055,7 +2083,18 @@ def inventory_products():
             cost_price = int(request.form.get("cost_price", 0) or 0)
             selling_price = int(request.form.get("selling_price", 0) or 0)
             low_stock_level = int(request.form.get("low_stock_level", 5) or 5)
-            image_url = request.form.get("image_url", "").strip() or None
+
+            # Keep old image unless a new one is uploaded
+            cursor.execute("SELECT image_url FROM products WHERE product_id = %s", (product_id,))
+            old = cursor.fetchone()
+            image_url = old["image_url"] if old else None
+
+            if "product_image" in request.files:
+                file = request.files["product_image"]
+                if file.filename:
+                    new_image = save_product_image(file)
+                    if new_image:
+                        image_url = new_image
 
             try:
                 cursor.execute("""
@@ -2069,6 +2108,8 @@ def inventory_products():
             except Exception as e:
                 flash("Error updating product.", "danger")
                 print(e)
+
+    # ... rest of the function stays the same (fetch categories & products)
 
     cursor.execute("SELECT category_id, name FROM product_categories ORDER BY name")
     categories = cursor.fetchall()
@@ -2086,6 +2127,8 @@ def inventory_products():
     conn.close()
 
     return render_template("inventory_products.html", products=products, categories=categories)
+
+
 
 
 @app.route("/inventory/delete-product/<int:product_id>")
