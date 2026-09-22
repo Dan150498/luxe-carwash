@@ -336,4 +336,13 @@ td {
     .stats-grid {
         grid-template-columns: 1fr 1fr;
     }
+
+    .nav-section {
+    color: #666;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 18px 25px 6px;
+    text-transform: uppercase;
+}
 }
