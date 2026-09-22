@@ -6,8 +6,8 @@
 <div class="card">
     <h2>Manage Products</h2>
 
-    <!-- Add Product Form -->
-    <form method="POST" style="background:#111; padding:20px; border-radius:8px; margin-bottom:30px; border:1px solid #333;">
+    <!-- ==================== ADD PRODUCT FORM ==================== -->
+    <form method="POST" enctype="multipart/form-data" style="background:#111; padding:20px; border-radius:8px; margin-bottom:30px; border:1px solid #333;">
         <input type="hidden" name="action" value="add">
         <h3 style="color:#d4af37; margin-bottom:15px; font-size:1.1rem;">Add New Product</h3>
         
@@ -17,6 +17,7 @@
                 <input type="text" name="name" required
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
+
             <div class="form-group" style="margin-bottom:0;">
                 <label>Category</label>
                 <select name="category_id" required
@@ -27,36 +28,42 @@
                     {% endfor %}
                 </select>
             </div>
+
             <div class="form-group" style="margin-bottom:0;">
-                <label>Cost Price</label>
+                <label>Cost Price (KSh)</label>
                 <input type="number" name="cost_price" value="0" min="0"
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
+
             <div class="form-group" style="margin-bottom:0;">
-                <label>Selling Price</label>
+                <label>Selling Price (KSh)</label>
                 <input type="number" name="selling_price" required min="0"
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
+
             <div class="form-group" style="margin-bottom:0;">
                 <label>Opening Stock</label>
                 <input type="number" name="stock_qty" value="0" min="0"
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
+
             <div class="form-group" style="margin-bottom:0;">
                 <label>Low Stock Alert</label>
                 <input type="number" name="low_stock_level" value="5" min="0"
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
+
             <div class="form-group" style="margin-bottom:0; grid-column: 1 / -1;">
-                <label>Image URL (optional)</label>
-                <input type="url" name="image_url" placeholder="https://example.com/image.jpg"
+                <label>Product Image (optional)</label>
+                <input type="file" name="product_image" accept="image/*"
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
         </div>
+
         <button type="submit" class="btn" style="margin-top:15px;">Add Product</button>
     </form>
 
-    <!-- Products List -->
+    <!-- ==================== PRODUCTS TABLE ==================== -->
     <h3 style="color:#d4af37; margin-bottom:15px;">Current Products</h3>
     <div class="table-responsive">
         <table>
@@ -76,8 +83,8 @@
                 <tr>
                     <td>
                         {% if p.image_url %}
-                            <img src="{{ p.image_url }}" alt="{{ p.name }}" 
-                                 style="width:50px; height:50px; object-fit:cover; border-radius:6px;">
+                            <img src="{{ p.image_url }}" alt="{{ p.name }}"
+                                 style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid #333;">
                         {% else %}
                             <span style="color:#666;">—</span>
                         {% endif %}
@@ -94,16 +101,25 @@
                         {% endif %}
                     </td>
                     <td>
-                        <a href="#" onclick="openEditModal({{ p.product_id }}, '{{ p.name }}', {{ p.category_id or 'null' }}, {{ p.cost_price }}, {{ p.selling_price }}, {{ p.low_stock_level }}, '{{ p.image_url or '' }}')"
-                           style="color:#66d9ef; margin-right:10px;">Edit</a>
+                        <a href="#" style="color:#66d9ef; margin-right:12px;"
+                           onclick="openEditModal(
+                               {{ p.product_id }},
+                               '{{ p.name | e }}',
+                               {{ p.category_id or 'null' }},
+                               {{ p.cost_price }},
+                               {{ p.selling_price }},
+                               {{ p.low_stock_level }},
+                               '{{ p.image_url or '' }}'
+                           )">Edit</a>
+
                         <a href="{{ url_for('delete_product', product_id=p.product_id) }}"
                            style="color:#ff6b6b;"
-                           onclick="return confirm('Delete this product?')">Delete</a>
+                           onclick="return confirm('Are you sure you want to delete this product?')">Delete</a>
                     </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="7" style="color:#888;">No products yet.</td>
+                    <td colspan="7" style="color:#888; text-align:center;">No products yet. Add your first product above.</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -111,11 +127,12 @@
     </div>
 </div>
 
-<!-- Edit Modal -->
-<div id="editModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:2000; align-items:center; justify-content:center;">
-    <div style="background:#1a1a1a; border:1px solid #d4af37; border-radius:10px; padding:25px; width:90%; max-width:500px;">
+<!-- ==================== EDIT MODAL ==================== -->
+<div id="editModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:2000; align-items:center; justify-content:center;">
+    <div style="background:#1a1a1a; border:2px solid #d4af37; border-radius:12px; padding:25px; width:90%; max-width:520px; max-height:90vh; overflow-y:auto;">
         <h3 style="color:#d4af37; margin-bottom:20px;">Edit Product</h3>
-        <form method="POST">
+
+        <form method="POST" enctype="multipart/form-data">
             <input type="hidden" name="action" value="edit">
             <input type="hidden" name="product_id" id="edit_product_id">
 
@@ -124,6 +141,7 @@
                 <input type="text" name="name" id="edit_name" required
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
+
             <div class="form-group">
                 <label>Category</label>
                 <select name="category_id" id="edit_category" required
@@ -133,46 +151,69 @@
                     {% endfor %}
                 </select>
             </div>
+
             <div class="form-group">
-                <label>Cost Price</label>
+                <label>Cost Price (KSh)</label>
                 <input type="number" name="cost_price" id="edit_cost" min="0"
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
+
             <div class="form-group">
-                <label>Selling Price</label>
+                <label>Selling Price (KSh)</label>
                 <input type="number" name="selling_price" id="edit_selling" min="0" required
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
+
             <div class="form-group">
                 <label>Low Stock Level</label>
                 <input type="number" name="low_stock_level" id="edit_low" min="0"
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
+
             <div class="form-group">
-                <label>Image URL</label>
-                <input type="url" name="image_url" id="edit_image"
+                <label>Current Image</label>
+                <div id="current_image_preview" style="margin-bottom:10px;"></div>
+                <label>Change Image (leave empty to keep current)</label>
+                <input type="file" name="product_image" accept="image/*"
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
 
-            <button type="submit" class="btn">Save Changes</button>
-            <button type="button" class="btn" style="background:#333; margin-left:10px;" onclick="closeEditModal()">Cancel</button>
+            <div style="margin-top:20px;">
+                <button type="submit" class="btn">Save Changes</button>
+                <button type="button" class="btn" style="background:#333; margin-left:10px;" onclick="closeEditModal()">Cancel</button>
+            </div>
         </form>
     </div>
 </div>
 
 <script>
-function openEditModal(id, name, categoryId, cost, selling, low, image) {
+function openEditModal(id, name, categoryId, cost, selling, low, imageUrl) {
     document.getElementById('edit_product_id').value = id;
     document.getElementById('edit_name').value = name;
     document.getElementById('edit_category').value = categoryId;
     document.getElementById('edit_cost').value = cost;
     document.getElementById('edit_selling').value = selling;
     document.getElementById('edit_low').value = low;
-    document.getElementById('edit_image').value = image;
+
+    const preview = document.getElementById('current_image_preview');
+    if (imageUrl) {
+        preview.innerHTML = `<img src="${imageUrl}" style="width:80px; height:80px; object-fit:cover; border-radius:6px; border:1px solid #333;">`;
+    } else {
+        preview.innerHTML = `<span style="color:#888;">No image</span>`;
+    }
+
     document.getElementById('editModal').style.display = 'flex';
 }
+
 function closeEditModal() {
     document.getElementById('editModal').style.display = 'none';
 }
+
+// Close modal when clicking outside
+document.getElementById('editModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeEditModal();
+    }
+});
 </script>
 {% endblock %}
