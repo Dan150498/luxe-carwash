@@ -2224,6 +2224,7 @@ def sell_product():
             quantity = int(quantity)
             cash_amount = int(cash_amount or 0)
             mpesa_amount = int(mpesa_amount or 0)
+            agreed_amount = int(agreed_amount_raw) if agreed_amount_raw else 0
 
             cursor.execute("SELECT * FROM products WHERE product_id = %s", (product_id,))
             product = cursor.fetchone()
@@ -2235,17 +2236,10 @@ def sell_product():
             else:
                 min_total = product["selling_price"] * quantity
 
-                # Use negotiated amount if provided, otherwise use base selling price
-                if agreed_amount_raw:
-                    total = int(agreed_amount_raw)
-                else:
-                    total = min_total
-
-                # Cannot go below selling price
-                if total < min_total:
+                if agreed_amount < min_total:
                     flash(f"Amount cannot be below the selling price of KSh {min_total}.", "danger")
-                elif cash_amount + mpesa_amount != total:
-                    flash(f"Cash + M-Pesa must equal the agreed amount of KSh {total}.", "danger")
+                elif cash_amount + mpesa_amount != agreed_amount:
+                    flash(f"Cash + M-Pesa must equal the agreed amount of KSh {agreed_amount}.", "danger")
                 else:
                     if cash_amount > 0 and mpesa_amount > 0:
                         payment_method = "Mixed"
@@ -2254,29 +2248,27 @@ def sell_product():
                     else:
                         payment_method = "Cash"
 
-                    # Reduce stock
                     cursor.execute("""
                         UPDATE products SET stock_qty = stock_qty - %s 
                         WHERE product_id = %s
                     """, (quantity, product_id))
 
-                    # Record movement
                     cursor.execute("""
                         INSERT INTO stock_movements 
                         (product_id, movement_type, quantity, selling_price, payment_method, 
                          cash_amount, mpesa_amount, created_by)
                         VALUES (%s, 'sale', %s, %s, %s, %s, %s, %s)
-                    """, (product_id, quantity, total, payment_method, 
+                    """, (product_id, quantity, agreed_amount, payment_method, 
                           cash_amount, mpesa_amount, session["user_id"]))
 
                     conn.commit()
-                    flash(f"Sold {quantity} x {product['name']} for KSh {total}", "success")
+                    flash(f"Sold {quantity} x {product['name']} for KSh {agreed_amount}", "success")
                     cursor.close()
                     conn.close()
                     return redirect(url_for("sell_product"))
 
         except Exception as e:
-            flash("Error processing sale.", "danger")
+            flash("Error processing sale. Please check the amounts.", "danger")
             print(e)
 
     cursor.execute("""
