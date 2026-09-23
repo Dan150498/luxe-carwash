@@ -6,14 +6,16 @@
 <div class="card" style="max-width:550px;">
     <h2>Sell Product</h2>
 
-    <form method="POST">
+    <form method="POST" id="sellForm">
         <div class="form-group">
             <label>Product</label>
             <select name="product_id" id="product_select" required
                     style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
                 <option value="">-- Select Product --</option>
                 {% for p in products %}
-                    <option value="{{ p.product_id }}" data-price="{{ p.selling_price }}" data-stock="{{ p.stock_qty }}">
+                    <option value="{{ p.product_id }}" 
+                            data-price="{{ p.selling_price }}" 
+                            data-stock="{{ p.stock_qty }}">
                         {{ p.name }} — KSh {{ p.selling_price }} (Stock: {{ p.stock_qty }})
                     </option>
                 {% endfor %}
@@ -27,40 +29,121 @@
         </div>
 
         <div class="form-group">
-            <label>Total Amount</label>
-            <input type="text" id="total_display" value="KSh 0" readonly
-                   style="width:100%; padding:12px; background:#222; color:#d4af37; border:1px solid #333; border-radius:6px; font-weight:600;">
+            <label>Agreed Amount (KSh)</label>
+            <input type="number" name="agreed_amount" id="agreed_amount" min="0" required
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+            <p id="min-price-msg" style="color:#888; font-size:0.85rem; margin-top:6px;"></p>
         </div>
 
         <div class="form-group">
-            <label style="color:#d4af37;">Payment</label>
-            <div style="display:flex; gap:15px;">
-                <div style="flex:1;">
-                    <label>Cash</label>
-                    <input type="number" name="cash_amount" value="0" min="0"
+            <label style="color:#d4af37;">Payment Breakdown</label>
+            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-top:8px;">
+                <div style="flex:1; min-width:140px;">
+                    <label>Cash (KSh)</label>
+                    <input type="number" name="cash_amount" id="cash_amount" value="0" min="0"
                            style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
                 </div>
-                <div style="flex:1;">
-                    <label>M-Pesa</label>
-                    <input type="number" name="mpesa_amount" value="0" min="0"
+                <div style="flex:1; min-width:140px;">
+                    <label>M-Pesa (KSh)</label>
+                    <input type="number" name="mpesa_amount" id="mpesa_amount" value="0" min="0"
                            style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
                 </div>
             </div>
+            <p style="color:#888; font-size:0.85rem; margin-top:8px;">
+                Cash + M-Pesa must equal the agreed amount
+            </p>
         </div>
 
         <button type="submit" class="btn">Complete Sale</button>
+        <a href="{{ url_for('cashier_home') }}" class="btn" style="background:#333; margin-left:10px;">Cancel</a>
     </form>
 </div>
 
 <script>
-    function updateTotal() {
-        const select = document.getElementById('product_select');
-        const qty = parseInt(document.getElementById('quantity').value) || 0;
-        const option = select.options[select.selectedIndex];
-        const price = parseInt(option.getAttribute('data-price')) || 0;
-        document.getElementById('total_display').value = 'KSh ' + (price * qty);
+function updateTotals() {
+    const select = document.getElementById('product_select');
+    const qtyInput = document.getElementById('quantity');
+    const agreedInput = document.getElementById('agreed_amount');
+    const minMsg = document.getElementById('min-price-msg');
+
+    const option = select.options[select.selectedIndex];
+    const price = parseInt(option.getAttribute('data-price')) || 0;
+    const stock = parseInt(option.getAttribute('data-stock')) || 0;
+    let qty = parseInt(qtyInput.value) || 1;
+
+    // Cap quantity to available stock
+    if (qty > stock) {
+        qty = stock;
+        qtyInput.value = stock;
     }
-    document.getElementById('product_select').addEventListener('change', updateTotal);
-    document.getElementById('quantity').addEventListener('input', updateTotal);
+
+    const minTotal = price * qty;
+
+    // Set minimum and default agreed amount
+    agreedInput.min = minTotal;
+    if (!agreedInput.value || parseInt(agreedInput.value) < minTotal) {
+        agreedInput.value = minTotal;
+    }
+
+    minMsg.textContent = `Minimum amount: KSh ${minTotal} (selling price × quantity). You can increase it if negotiated higher.`;
+}
+
+// Add agreed_amount field reference
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('sellForm') || document.querySelector('form');
+    
+    // Insert agreed amount field if not present
+    if (!document.getElementById('agreed_amount')) {
+        const qtyGroup = document.getElementById('quantity').closest('.form-group');
+        const agreedGroup = document.createElement('div');
+        agreedGroup.className = 'form-group';
+        agreedGroup.innerHTML = `
+            <label>Agreed Amount (KSh)</label>
+            <input type="number" name="agreed_amount" id="agreed_amount" min="0" required
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+            <p id="min-price-msg" style="color:#888; font-size:0.85rem; margin-top:6px;"></p>
+        `;
+        qtyGroup.after(agreedGroup);
+    }
+
+    document.getElementById('product_select').addEventListener('change', updateTotals);
+    document.getElementById('quantity').addEventListener('input', updateTotals);
+    document.getElementById('agreed_amount')?.addEventListener('input', function() {
+        const minTotal = parseInt(this.min) || 0;
+        if (parseInt(this.value) < minTotal) {
+            this.value = minTotal;
+        }
+    });
+});
+
+function updateTotals() {
+    const select = document.getElementById('product_select');
+    const qtyInput = document.getElementById('quantity');
+    const agreedInput = document.getElementById('agreed_amount');
+    const minMsg = document.getElementById('min-price-msg');
+
+    const option = select.options[select.selectedIndex];
+    const price = parseInt(option?.getAttribute('data-price')) || 0;
+    const stock = parseInt(option?.getAttribute('data-stock')) || 0;
+    let qty = parseInt(qtyInput.value) || 1;
+
+    if (qty > stock) {
+        qty = stock;
+        qtyInput.value = stock;
+    }
+
+    const minTotal = price * qty;
+
+    if (agreedInput) {
+        agreedInput.min = minTotal;
+        if (!agreedInput.value || parseInt(agreedInput.value) < minTotal) {
+            agreedInput.value = minTotal;
+        }
+    }
+
+    if (minMsg) {
+        minMsg.textContent = `Minimum: KSh ${minTotal}. You can increase if negotiated higher.`;
+    }
+}
 </script>
 {% endblock %}
