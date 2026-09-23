@@ -2216,6 +2216,7 @@ def sell_product():
     if request.method == "POST":
         product_id = request.form.get("product_id")
         quantity = request.form.get("quantity", "1")
+        agreed_amount_raw = request.form.get("agreed_amount", "").strip()
         cash_amount = request.form.get("cash_amount", "0")
         mpesa_amount = request.form.get("mpesa_amount", "0")
 
@@ -2232,29 +2233,48 @@ def sell_product():
             elif product["stock_qty"] < quantity:
                 flash(f"Not enough stock. Only {product['stock_qty']} available.", "danger")
             else:
-                total = product["selling_price"] * quantity
+                min_total = product["selling_price"] * quantity
 
-                if cash_amount + mpesa_amount != total:
-                    flash(f"Cash + M-Pesa must equal KSh {total}", "danger")
+                # Use negotiated amount if provided, otherwise use base selling price
+                if agreed_amount_raw:
+                    total = int(agreed_amount_raw)
                 else:
+                    total = min_total
+
+                # Cannot go below selling price
+                if total < min_total:
+                    flash(f"Amount cannot be below the selling price of KSh {min_total}.", "danger")
+                elif cash_amount + mpesa_amount != total:
+                    flash(f"Cash + M-Pesa must equal the agreed amount of KSh {total}.", "danger")
+                else:
+                    if cash_amount > 0 and mpesa_amount > 0:
+                        payment_method = "Mixed"
+                    elif mpesa_amount > 0:
+                        payment_method = "M-Pesa"
+                    else:
+                        payment_method = "Cash"
+
                     # Reduce stock
                     cursor.execute("""
                         UPDATE products SET stock_qty = stock_qty - %s 
                         WHERE product_id = %s
                     """, (quantity, product_id))
 
-                    payment_method = "Mixed" if cash_amount > 0 and mpesa_amount > 0 else ("M-Pesa" if mpesa_amount > 0 else "Cash")
-
+                    # Record movement
                     cursor.execute("""
                         INSERT INTO stock_movements 
                         (product_id, movement_type, quantity, selling_price, payment_method, 
                          cash_amount, mpesa_amount, created_by)
                         VALUES (%s, 'sale', %s, %s, %s, %s, %s, %s)
-                    """, (product_id, quantity, product["selling_price"], payment_method, 
+                    """, (product_id, quantity, total, payment_method, 
                           cash_amount, mpesa_amount, session["user_id"]))
 
                     conn.commit()
                     flash(f"Sold {quantity} x {product['name']} for KSh {total}", "success")
+                    cursor.close()
+                    conn.close()
+                    return redirect(url_for("sell_product"))
+
         except Exception as e:
             flash("Error processing sale.", "danger")
             print(e)
