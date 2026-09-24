@@ -25,6 +25,11 @@
     <a href="{{ url_for('backup_database') }}" class="btn">
         Download Full Backup Now
     </a>
+    <div style="margin-top:30px; padding-top:20px; border-top:1px solid #333;">
+        <h3 style="color:#d4af37; margin-bottom:10px;">Restore Data</h3>
+        <p style="color:#888; margin-bottom:15px;">Already have a backup file? Restore missing data from it.</p>
+        <a href="{{ url_for('restore_backup') }}" class="btn" style="background:#333;">Restore from Backup</a>
+    </div>
 
     <p style="color:#888; font-size:0.85rem; margin-top:20px;">
         Recommendation: Download a backup at least once every week, 

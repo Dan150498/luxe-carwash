@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Restore Backup - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:600px;">
+    <h2>Restore from Backup</h2>
+
+    <p style="color:#888; margin-bottom:20px;">
+        Upload a previously downloaded JSON backup file. 
+        This is a <strong>Safe Restore</strong> — it only adds missing records and will not delete current data.
+    </p>
+
+    <form method="POST" enctype="multipart/form-data">
+        <div class="form-group">
+            <label>Select Backup File (.json)</label>
+            <input type="file" name="backup_file" accept=".json" required
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <button type="submit" class="btn"
+                onclick="return confirm('Start safe restore? Existing data will not be deleted.')">
+            Restore Backup
+        </button>
+        <a href="{{ url_for('backup_page') }}" class="btn" style="background:#333; margin-left:10px;">Cancel</a>
+    </form>
+
+    {% if restored_counts %}
+    <div style="margin-top:30px; background:#111; border:1px solid #333; border-radius:8px; padding:20px;">
+        <h3 style="color:#d4af37; margin-bottom:15px;">Restore Summary</h3>
+        <ul style="color:#ccc; line-height:1.8;">
+            {% for table, count in restored_counts.items() %}
+                <li><strong>{{ table }}</strong>: {{ count }} record(s) restored</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
