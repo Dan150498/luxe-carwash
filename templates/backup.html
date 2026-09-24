@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Database Backup - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:600px;">
+    <h2>Database Backup</h2>
+
+    <p style="color:#888; margin-bottom:25px;">
+        Download a full backup of your Luxe Carwash data. 
+        Keep this file safe on your computer or Google Drive.
+    </p>
+
+    <div style="background:#111; border:1px solid #333; border-radius:8px; padding:20px; margin-bottom:25px;">
+        <h3 style="color:#d4af37; margin-bottom:10px;">What is included?</h3>
+        <ul style="color:#ccc; padding-left:20px; line-height:1.8;">
+            <li>Users & Staff</li>
+            <li>Washes & Services</li>
+            <li>Commissions & Payments</li>
+            <li>Products & Stock Movements</li>
+            <li>Prices & Vehicle Types</li>
+        </ul>
+    </div>
+
+    <a href="{{ url_for('backup_database') }}" class="btn">
+        Download Full Backup Now
+    </a>
+
+    <p style="color:#888; font-size:0.85rem; margin-top:20px;">
+        Recommendation: Download a backup at least once every week, 
+        especially every Saturday after paying commissions.
+    </p>
+</div>
+{% endblock %}
