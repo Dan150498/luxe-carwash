@@ -30,13 +30,17 @@ def save_product_image(file):
 # Kenyan timezone
 EAT = pytz.timezone("Africa/Nairobi")
 
+def get_kenya_now():
+    """Current date and time in Kenya"""
+    return datetime.now(EAT)
+
 def get_kenya_today():
-    """Returns today's date in Kenyan time"""
+    """Today's date in Kenya"""
     return datetime.now(EAT).date()
 
-def get_kenya_now():
-    """Returns current datetime in Kenyan time"""
-    return datetime.now(EAT)
+def get_kenya_time():
+    """Current time in Kenya"""
+    return datetime.now(EAT).time().replace(microsecond=0)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-in-production")
@@ -2596,6 +2600,16 @@ def restore_backup():
             print(e)
 
     return render_template("restore_backup.html", restored_counts=message)
+
+
+@app.route("/check-time")
+def check_time():
+    return {
+        "kenya_now": str(get_kenya_now()),
+        "kenya_today": str(get_kenya_today()),
+        "kenya_time": str(get_kenya_time()),
+        "utc_now": str(datetime.utcnow())
+    }
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
