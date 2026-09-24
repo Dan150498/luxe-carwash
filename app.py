@@ -275,23 +275,34 @@ def dashboard():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
-    today = get_kenya_today().isoformat()
+    today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+
+    # Show backup reminder every Saturday
+    show_backup_reminder = today.weekday() == 5  # Monday=0 ... Saturday=5
+
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
     cursor.execute("""
         SELECT 
             COUNT(*) as total_washes,
             COALESCE(SUM(total_amount), 0) as total_money,
-            COALESCE(SUM(CASE WHEN payment_method = 'Cash' THEN total_amount ELSE 0 END), 0) as cash_total,
-            COALESCE(SUM(CASE WHEN payment_method = 'M-Pesa' THEN total_amount ELSE 0 END), 0) as mpesa_total
+            COALESCE(SUM(cash_amount), 0) as cash_total,
+            COALESCE(SUM(mpesa_amount), 0) as mpesa_total
         FROM washes
-        WHERE wash_date = %s
+        WHERE wash_date = %s AND (status = 'completed' OR status IS NULL)
     """, (today,))
     stats = cursor.fetchone()
+
     cursor.close()
     conn.close()
 
-    return render_template("dashboard.html", stats=stats, today=today)
+    return render_template(
+        "dashboard.html",
+        stats=stats,
+        today=today,
+        show_backup_reminder=show_backup_reminder
+    )
 
 @app.route("/cashier")
 def cashier_home():
