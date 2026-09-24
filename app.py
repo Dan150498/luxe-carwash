@@ -2420,6 +2420,182 @@ def backup_page():
         return redirect(url_for("login"))
     return render_template("backup.html")
 
+@app.route("/restore-backup", methods=["GET", "POST"])
+def restore_backup():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    message = None
+    restored_counts = {}
+
+    if request.method == "POST":
+        if "backup_file" not in request.files:
+            flash("No file selected.", "danger")
+            return redirect(url_for("restore_backup"))
+
+        file = request.files["backup_file"]
+        if file.filename == "":
+            flash("No file selected.", "danger")
+            return redirect(url_for("restore_backup"))
+
+        if not file.filename.endswith(".json"):
+            flash("Please upload a valid .json backup file.", "danger")
+            return redirect(url_for("restore_backup"))
+
+        try:
+            backup_data = json.load(file)
+            tables_data = backup_data.get("tables", {})
+
+            conn = get_connection()
+            cursor = conn.cursor()
+
+            # ===== STAFF =====
+            if "staff" in tables_data and isinstance(tables_data["staff"], list):
+                count = 0
+                for row in tables_data["staff"]:
+                    cursor.execute("SELECT 1 FROM staff WHERE staff_id = %s", (row.get("staff_id"),))
+                    if not cursor.fetchone():
+                        cursor.execute("""
+                            INSERT INTO staff (staff_id, full_name, phone, is_active, created_at)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (staff_id) DO NOTHING
+                        """, (
+                            row.get("staff_id"),
+                            row.get("full_name"),
+                            row.get("phone"),
+                            row.get("is_active", 1),
+                            row.get("created_at")
+                        ))
+                        count += 1
+                restored_counts["staff"] = count
+
+            # ===== VEHICLE TYPES =====
+            if "vehicle_types" in tables_data and isinstance(tables_data["vehicle_types"], list):
+                count = 0
+                for row in tables_data["vehicle_types"]:
+                    cursor.execute("SELECT 1 FROM vehicle_types WHERE vehicle_type_id = %s", (row.get("vehicle_type_id"),))
+                    if not cursor.fetchone():
+                        cursor.execute("""
+                            INSERT INTO vehicle_types (vehicle_type_id, name, description)
+                            VALUES (%s, %s, %s)
+                            ON CONFLICT (vehicle_type_id) DO NOTHING
+                        """, (
+                            row.get("vehicle_type_id"),
+                            row.get("name"),
+                            row.get("description")
+                        ))
+                        count += 1
+                restored_counts["vehicle_types"] = count
+
+            # ===== SERVICES =====
+            if "services" in tables_data and isinstance(tables_data["services"], list):
+                count = 0
+                for row in tables_data["services"]:
+                    cursor.execute("SELECT 1 FROM services WHERE service_id = %s", (row.get("service_id"),))
+                    if not cursor.fetchone():
+                        cursor.execute("""
+                            INSERT INTO services (service_id, name, is_package, commission_rule, is_adjustment)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (service_id) DO NOTHING
+                        """, (
+                            row.get("service_id"),
+                            row.get("name"),
+                            row.get("is_package", 0),
+                            row.get("commission_rule", "standard"),
+                            row.get("is_adjustment", 0)
+                        ))
+                        count += 1
+                restored_counts["services"] = count
+
+            # ===== PRODUCTS =====
+            if "products" in tables_data and isinstance(tables_data["products"], list):
+                count = 0
+                for row in tables_data["products"]:
+                    cursor.execute("SELECT 1 FROM products WHERE product_id = %s", (row.get("product_id"),))
+                    if not cursor.fetchone():
+                        cursor.execute("""
+                            INSERT INTO products 
+                            (product_id, name, category_id, cost_price, selling_price, stock_qty, low_stock_level, is_active, image_url, created_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (product_id) DO NOTHING
+                        """, (
+                            row.get("product_id"),
+                            row.get("name"),
+                            row.get("category_id"),
+                            row.get("cost_price", 0),
+                            row.get("selling_price", 0),
+                            row.get("stock_qty", 0),
+                            row.get("low_stock_level", 5),
+                            row.get("is_active", 1),
+                            row.get("image_url"),
+                            row.get("created_at")
+                        ))
+                        count += 1
+                restored_counts["products"] = count
+
+            # ===== WASHES =====
+            if "washes" in tables_data and isinstance(tables_data["washes"], list):
+                count = 0
+                for row in tables_data["washes"]:
+                    cursor.execute("SELECT 1 FROM washes WHERE wash_id = %s", (row.get("wash_id"),))
+                    if not cursor.fetchone():
+                        cursor.execute("""
+                            INSERT INTO washes 
+                            (wash_id, registration_number, staff_id, vehicle_type_id, wash_date, wash_time,
+                             total_amount, payment_method, cash_amount, mpesa_amount, status, notes, created_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (wash_id) DO NOTHING
+                        """, (
+                            row.get("wash_id"),
+                            row.get("registration_number"),
+                            row.get("staff_id"),
+                            row.get("vehicle_type_id"),
+                            row.get("wash_date"),
+                            row.get("wash_time"),
+                            row.get("total_amount"),
+                            row.get("payment_method", "Cash"),
+                            row.get("cash_amount", 0),
+                            row.get("mpesa_amount", 0),
+                            row.get("status", "completed"),
+                            row.get("notes"),
+                            row.get("created_at")
+                        ))
+                        count += 1
+                restored_counts["washes"] = count
+
+            # ===== WASH SERVICES =====
+            if "wash_services" in tables_data and isinstance(tables_data["wash_services"], list):
+                count = 0
+                for row in tables_data["wash_services"]:
+                    cursor.execute("SELECT 1 FROM wash_services WHERE wash_service_id = %s", (row.get("wash_service_id"),))
+                    if not cursor.fetchone():
+                        cursor.execute("""
+                            INSERT INTO wash_services 
+                            (wash_service_id, wash_id, service_id, amount, commission_amount)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (wash_service_id) DO NOTHING
+                        """, (
+                            row.get("wash_service_id"),
+                            row.get("wash_id"),
+                            row.get("service_id"),
+                            row.get("amount"),
+                            row.get("commission_amount", 0)
+                        ))
+                        count += 1
+                restored_counts["wash_services"] = count
+
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            flash("Safe restore completed successfully!", "success")
+            message = restored_counts
+
+        except Exception as e:
+            flash(f"Error restoring backup: {str(e)}", "danger")
+            print(e)
+
+    return render_template("restore_backup.html", restored_counts=message)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
