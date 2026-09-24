@@ -11,6 +11,8 @@ import pandas as pd
 from io import BytesIO
 from datetime import date, datetime, timedelta, time
 import pytz
+import json
+
 
 
 def allowed_file(filename):
@@ -2349,6 +2351,64 @@ def setup_product_image():
     cursor.close()
     conn.close()
     return message
+
+#====================BACKUP DATABASE==========================
+
+@app.route("/backup")
+def backup_database():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    backup_data = {
+        "backup_date": datetime.now().isoformat(),
+        "system": "Luxe Carwash",
+        "tables": {}
+    }
+
+    # List of important tables to backup
+    tables = [
+        "users", "staff", "vehicle_types", "services", "prices",
+        "washes", "wash_services", "commission_payments",
+        "products", "product_categories", "stock_movements",
+        "price_change_requests", "wash_edit_requests"
+    ]
+
+    for table in tables:
+        try:
+            cursor.execute(f"SELECT * FROM {table}")
+            rows = cursor.fetchall()
+            # Convert to normal dicts so it can be JSON serialized
+            backup_data["tables"][table] = [dict(row) for row in rows]
+        except Exception as e:
+            backup_data["tables"][table] = {"error": str(e)}
+
+    cursor.close()
+    conn.close()
+
+    # Create downloadable JSON file
+    output = BytesIO()
+    output.write(json.dumps(backup_data, indent=2, default=str).encode("utf-8"))
+    output.seek(0)
+
+    filename = f"luxe_carwash_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+    return send_file(
+        output,
+        mimetype="application/json",
+        as_attachment=True,
+        download_name=filename
+    )
+
+
+@app.route("/backup-page")
+def backup_page():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+    return render_template("backup.html")
+
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
