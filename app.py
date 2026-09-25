@@ -2748,6 +2748,34 @@ def restore_backup():
 
     return render_template("restore_backup.html", restored_counts=message)
 
+#==============================================ADVANCE FORM===============================================
+@app.route("/setup-advances")
+def setup_advances():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS staff_advances (
+                advance_id SERIAL PRIMARY KEY,
+                staff_id INTEGER REFERENCES staff(staff_id),
+                amount INTEGER NOT NULL,
+                advance_date DATE NOT NULL,
+                notes TEXT,
+                created_by INTEGER REFERENCES users(user_id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_deducted INTEGER DEFAULT 0
+            )
+        """)
+        conn.commit()
+        message = "Staff advances table created successfully!"
+    except Exception as e:
+        message = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return message
 
 @app.route("/check-time")
 def check_time():
