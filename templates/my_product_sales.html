@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Product Sales - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>
+        {% if is_admin %}
+            Product Sales
+        {% else %}
+            My Product Sales
+        {% endif %}
+    </h2>
+
+    <form method="GET" style="margin-bottom:25px;">
+        <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Select Date</label>
+                <input type="date" name="date" value="{{ selected_date }}"
+                       style="padding:10px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <button type="submit" class="btn">View</button>
+        </div>
+    </form>
+
+    <div class="stats-grid" style="margin-bottom:25px;">
+        <div class="stat-box">
+            <div class="number">{{ sales|length }}</div>
+            <div class="label">Items Sold</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">KSh {{ total_sales }}</div>
+            <div class="label">Total Sales</div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Product</th>
+                    <th>Qty</th>
+                    <th>Amount</th>
+                    <th>Payment</th>
+                    {% if is_admin %}
+                    <th>Sold By</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in sales %}
+                <tr>
+                    <td>{{ s.created_at.strftime('%H:%M') if s.created_at else '-' }}</td>
+                    <td>{{ s.product_name }}</td>
+                    <td>{{ s.quantity }}</td>
+                    <td style="color:#d4af37; font-weight:600;">KSh {{ s.amount }}</td>
+                    <td>
+                        {{ s.payment_method }}
+                        {% if s.payment_method == 'Mixed' %}
+                            <br><small style="color:#888;">Cash {{ s.cash_amount }} + M-Pesa {{ s.mpesa_amount }}</small>
+                        {% endif %}
+                    </td>
+                    {% if is_admin %}
+                    <td>{{ s.sold_by or '-' }}</td>
+                    {% endif %}
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="{{ 6 if is_admin else 5 }}" style="color:#888; text-align:center;">
+                        No product sales on this date.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

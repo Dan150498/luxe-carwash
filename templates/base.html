@@ -46,6 +46,7 @@
                     <a href="{{ url_for('stock_in') }}" class="nav-item"><i class="fas fa-dolly"></i> Stock In</a>
                     <a href="{{ url_for('sell_product') }}" class="nav-item"><i class="fas fa-shopping-cart"></i> Sell Product</a>
                     <a href="{{ url_for('inventory_report') }}" class="nav-item"><i class="fas fa-clipboard-list"></i> Stock Report</a>
+                    <a href="{{ url_for('my_product_sales') }}" class="nav-item"><i class="fas fa-receipt"></i> Product Sales</a>
 
                     <div class="nav-section">MANAGEMENT</div>
                     <a href="{{ url_for('manage_staff') }}" class="nav-item"><i class="fas fa-users"></i> Manage Staff</a>
@@ -67,6 +68,7 @@
 
                     <div class="nav-section">INVENTORY</div>
                     <a href="{{ url_for('sell_product') }}" class="nav-item"><i class="fas fa-shopping-cart"></i> Sell Product</a>
+                    <a href="{{ url_for('my_product_sales') }}" class="nav-item"><i class="fas fa-receipt"></i> My Product Sales</a>
 
                 {% elif session.get('role') == 'staff' %}
                     <a href="{{ url_for('staff_dashboard') }}" class="nav-item"><i class="fas fa-user"></i> My Dashboard</a>
