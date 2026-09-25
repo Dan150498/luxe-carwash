@@ -1134,7 +1134,7 @@ def delete_wash(wash_id):
 
     return redirect(url_for("search"))
 
-
+#============================== COMMISION==========================
 @app.route("/setup-commission")
 def setup_commission():
     if "user_id" not in session or session["role"] != "admin":
@@ -1195,7 +1195,7 @@ def weekly_commissions():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
-    today = get_kenya_today()
+    today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
     start_of_week = today - timedelta(days=today.weekday())
     end_of_week = start_of_week + timedelta(days=6)
 
@@ -1205,39 +1205,63 @@ def weekly_commissions():
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Handle Mark as Paid
+    # Mark as Paid
     if request.method == "POST" and request.form.get("action") == "mark_paid":
         staff_ids = request.form.getlist("staff_ids")
         for sid in staff_ids:
+            # Commission
             cursor.execute("""
                 SELECT COALESCE(SUM(ws.commission_amount), 0) as total
                 FROM washes w
                 JOIN wash_services ws ON w.wash_id = ws.wash_id
                 WHERE w.staff_id = %s AND w.wash_date BETWEEN %s AND %s
             """, (sid, start_date, end_date))
-            total = cursor.fetchone()["total"]
+            commission = cursor.fetchone()["total"]
 
-            if total > 0:
-                # Avoid duplicate payment for same period
+            # Advances
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) as total
+                FROM staff_advances
+                WHERE staff_id = %s AND advance_date BETWEEN %s AND %s
+            """, (sid, start_date, end_date))
+            advances = cursor.fetchone()["total"]
+
+            net_pay = commission - advances
+            if net_pay < 0:
+                net_pay = 0
+
+            cursor.execute("""
+                SELECT 1 FROM commission_payments 
+                WHERE staff_id = %s AND start_date = %s AND end_date = %s
+            """, (sid, start_date, end_date))
+            if not cursor.fetchone() and commission > 0:
                 cursor.execute("""
-                    SELECT 1 FROM commission_payments 
-                    WHERE staff_id = %s AND start_date = %s AND end_date = %s
-                """, (sid, start_date, end_date))
-                if not cursor.fetchone():
-                    cursor.execute("""
-                        INSERT INTO commission_payments (staff_id, start_date, end_date, total_amount, paid_by)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (sid, start_date, end_date, total, session.get("full_name")))
-        conn.commit()
-        flash("Selected staff have been marked as Paid!", "success")
+                    INSERT INTO commission_payments (staff_id, start_date, end_date, total_amount, paid_by)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (sid, start_date, end_date, net_pay, session.get("full_name")))
 
-    # Get data + payment status
+                # Mark advances as deducted
+                cursor.execute("""
+                    UPDATE staff_advances
+                    SET is_deducted = 1
+                    WHERE staff_id = %s AND advance_date BETWEEN %s AND %s
+                """, (sid, start_date, end_date))
+
+        conn.commit()
+        flash("Selected staff marked as Paid (advances deducted)!", "success")
+
+    # Get data with advances
     cursor.execute("""
         SELECT 
             s.staff_id,
             s.full_name,
             COUNT(DISTINCT w.wash_id) as total_washes,
             COALESCE(SUM(ws.commission_amount), 0) as total_commission,
+            COALESCE((
+                SELECT SUM(a.amount) FROM staff_advances a 
+                WHERE a.staff_id = s.staff_id 
+                  AND a.advance_date BETWEEN %s AND %s
+            ), 0) as total_advances,
             EXISTS (
                 SELECT 1 FROM commission_payments cp 
                 WHERE cp.staff_id = s.staff_id 
@@ -1250,10 +1274,15 @@ def weekly_commissions():
         WHERE s.is_active = 1
         GROUP BY s.staff_id, s.full_name
         ORDER BY total_commission DESC
-    """, (start_date, end_date, start_date, end_date))
-    
+    """, (start_date, end_date, start_date, end_date, start_date, end_date))
+
     results = cursor.fetchall()
-    unpaid_total = sum(r["total_commission"] for r in results if not r["is_paid"])
+
+    # Add net_pay to each row
+    for r in results:
+        r["net_pay"] = max(0, (r["total_commission"] or 0) - (r["total_advances"] or 0))
+
+    unpaid_total = sum(r["net_pay"] for r in results if not r["is_paid"])
     cursor.close()
     conn.close()
 
@@ -2776,6 +2805,67 @@ def setup_advances():
     cursor.close()
     conn.close()
     return message
+
+@app.route("/advances", methods=["GET", "POST"])
+def staff_advances():
+    if "user_id" not in session or session["role"] not in ("admin", "cashier"):
+        return redirect(url_for("login"))
+
+    today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        staff_id = request.form.get("staff_id")
+        amount = request.form.get("amount", "0").strip()
+        notes = request.form.get("notes", "").strip()
+        advance_date = request.form.get("advance_date") or today.isoformat()
+
+        try:
+            amount = int(amount)
+            if amount <= 0:
+                flash("Amount must be greater than zero.", "danger")
+            else:
+                cursor.execute("""
+                    INSERT INTO staff_advances (staff_id, amount, advance_date, notes, created_by)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (staff_id, amount, advance_date, notes, session["user_id"]))
+                conn.commit()
+                flash("Advance recorded successfully!", "success")
+        except Exception as e:
+            flash("Error recording advance.", "danger")
+            print(e)
+
+    # Staff list
+    cursor.execute("SELECT staff_id, full_name FROM staff WHERE is_active = 1 ORDER BY full_name")
+    staff_list = cursor.fetchall()
+
+    # This week's advances
+    start_of_week = today - timedelta(days=today.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
+
+    cursor.execute("""
+        SELECT a.*, s.full_name as staff_name, u.full_name as created_by_name
+        FROM staff_advances a
+        JOIN staff s ON a.staff_id = s.staff_id
+        LEFT JOIN users u ON a.created_by = u.user_id
+        WHERE a.advance_date BETWEEN %s AND %s
+        ORDER BY a.advance_date DESC, a.advance_id DESC
+    """, (start_of_week, end_of_week))
+    advances = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "staff_advances.html",
+        staff_list=staff_list,
+        advances=advances,
+        today=today.isoformat(),
+        start_of_week=start_of_week,
+        end_of_week=end_of_week
+    )
 
 @app.route("/check-time")
 def check_time():
