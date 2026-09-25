@@ -2349,6 +2349,7 @@ def inventory_report():
 
 @app.route("/setup-product-image")
 def setup_product_image():
+
     if "user_id" not in session or session["role"] != "admin":
         return "Unauthorized", 403
 
@@ -2366,6 +2367,75 @@ def setup_product_image():
     cursor.close()
     conn.close()
     return message
+
+@app.route("/inventory/my-sales")
+def my_product_sales():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+    selected_date = request.args.get("date") or today.isoformat()
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if session["role"] == "admin":
+        # Admin sees all sales
+        cursor.execute("""
+            SELECT 
+                m.movement_id,
+                m.created_at,
+                p.name as product_name,
+                m.quantity,
+                m.selling_price as amount,
+                m.payment_method,
+                m.cash_amount,
+                m.mpesa_amount,
+                u.full_name as sold_by
+            FROM stock_movements m
+            JOIN products p ON m.product_id = p.product_id
+            LEFT JOIN users u ON m.created_by = u.user_id
+            WHERE m.movement_type = 'sale'
+              AND m.created_at::date = %s
+            ORDER BY m.created_at DESC
+        """, (selected_date,))
+    else:
+        # Cashier / Staff sees only their own sales
+        cursor.execute("""
+            SELECT 
+                m.movement_id,
+                m.created_at,
+                p.name as product_name,
+                m.quantity,
+                m.selling_price as amount,
+                m.payment_method,
+                m.cash_amount,
+                m.mpesa_amount
+            FROM stock_movements m
+            JOIN products p ON m.product_id = p.product_id
+            WHERE m.movement_type = 'sale'
+              AND m.created_by = %s
+              AND m.created_at::date = %s
+            ORDER BY m.created_at DESC
+        """, (session["user_id"], selected_date))
+
+    sales = cursor.fetchall()
+    total_sales = sum(s["amount"] * s["quantity"] for s in sales) if sales else 0
+    # Note: selling_price in movements was stored as the agreed total in some versions
+    # Safer total:
+    total_sales = sum((s["amount"] or 0) for s in sales) if sales else 0
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "my_product_sales.html",
+        sales=sales,
+        selected_date=selected_date,
+        total_sales=total_sales,
+        is_admin=(session["role"] == "admin")
+    )
+
 
 #====================BACKUP DATABASE==========================
 
