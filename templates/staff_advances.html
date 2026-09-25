@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Staff Advances - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Staff Advances</h2>
+    <p style="color:#888; margin-bottom:25px;">
+        Record advances given during the week. They will be deducted on Saturday payout.
+        Week: <strong>{{ start_of_week }}</strong> → <strong>{{ end_of_week }}</strong>
+    </p>
+
+    <!-- Record Advance Form -->
+    <form method="POST" style="background:#111; padding:20px; border-radius:8px; margin-bottom:30px; border:1px solid #333;">
+        <h3 style="color:#d4af37; margin-bottom:15px; font-size:1.1rem;">Give Advance</h3>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:15px;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Staff</label>
+                <select name="staff_id" required
+                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+                    <option value="">-- Select Staff --</option>
+                    {% for s in staff_list %}
+                        <option value="{{ s.staff_id }}">{{ s.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Amount (KSh)</label>
+                <input type="number" name="amount" required min="1"
+                       style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Date</label>
+                <input type="date" name="advance_date" value="{{ today }}"
+                       style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Notes (optional)</label>
+                <input type="text" name="notes" placeholder="e.g. School fees"
+                       style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+        </div>
+
+        <button type="submit" class="btn" style="margin-top:15px;">Record Advance</button>
+    </form>
+
+    <!-- This week's advances -->
+    <h3 style="color:#d4af37; margin-bottom:15px;">Advances This Week</h3>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Staff</th>
+                    <th>Amount</th>
+                    <th>Notes</th>
+                    <th>Recorded By</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in advances %}
+                <tr>
+                    <td>{{ a.advance_date }}</td>
+                    <td>{{ a.staff_name }}</td>
+                    <td style="color:#ff6b6b; font-weight:600;">KSh {{ a.amount }}</td>
+                    <td>{{ a.notes or '-' }}</td>
+                    <td>{{ a.created_by_name or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" style="color:#888;">No advances this week.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

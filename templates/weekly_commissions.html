@@ -38,7 +38,9 @@
                         <th>Select</th>
                         <th>Staff Name</th>
                         <th>Washes</th>
-                        <th>Commission (KSh)</th>
+                        <th>Commission</th>
+                        <th>Advances</th>
+                        <th>Net Pay</th>
                         <th>Status</th>
                     </tr>
                 </thead>
@@ -52,7 +54,9 @@
                         </td>
                         <td>{{ r.full_name }}</td>
                         <td>{{ r.total_washes }}</td>
-                        <td style="color:#d4af37; font-weight:600;">{{ r.total_commission }}</td>
+                        <td style="color:#d4af37;">KSh {{ r.total_commission }}</td>
+                        <td style="color:#ff6b6b;">KSh {{ r.total_advances }}</td>
+                        <td style="color:#51cf66; font-weight:600;">KSh {{ r.net_pay }}</td>
                         <td>
                             {% if r.is_paid %}
                                 <span style="color:#51cf66; font-weight:600;">Paid</span>
@@ -65,7 +69,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="5" style="color:#888;">No data for this period</td>
+                        <td colspan="7" style="color:#888;">No data for this period</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -79,7 +83,7 @@
             </button>
 
             <div style="font-size:1.2rem;">
-                <strong>Unpaid Total: <span style="color:#d4af37;">KSh {{ grand_total }}</span></strong>
+                <strong>Unpaid Net Total: <span style="color:#d4af37;">KSh {{ grand_total }}</span></strong>
             </div>
         </div>
     </form>
