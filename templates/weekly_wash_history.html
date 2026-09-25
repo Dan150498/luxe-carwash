@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Weekly Wash History - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>
+        {% if is_staff %}
+            My Weekly Wash History
+        {% else %}
+            Weekly Wash History
+        {% endif %}
+    </h2>
+
+    <p style="color:#888; margin-bottom:20px;">
+        Week: <strong style="color:#d4af37;">{{ start_of_week }}</strong> → 
+        <strong style="color:#d4af37;">{{ end_of_week }}</strong>
+        <span style="color:#666;"> (Resets every Monday)</span>
+    </p>
+
+    <!-- Week navigation -->
+    <div style="display:flex; gap:10px; margin-bottom:25px; flex-wrap:wrap;">
+        <a href="{{ url_for('weekly_wash_history', start=prev_week) }}" class="btn" style="background:#333;">
+            ← Previous Week
+        </a>
+        <a href="{{ url_for('weekly_wash_history') }}" class="btn">
+            Current Week
+        </a>
+        <a href="{{ url_for('weekly_wash_history', start=next_week) }}" class="btn" style="background:#333;">
+            Next Week →
+        </a>
+    </div>
+
+    <!-- Summary -->
+    <div class="stats-grid" style="margin-bottom:25px;">
+        <div class="stat-box">
+            <div class="number">{{ total_cars }}</div>
+            <div class="label">Cars This Week</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">KSh {{ total_amount }}</div>
+            <div class="label">Total Amount</div>
+        </div>
+    </div>
+
+    <!-- History table -->
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Registration</th>
+                    <th>Vehicle</th>
+                    {% if not is_staff %}
+                    <th>Staff</th>
+                    {% endif %}
+                    <th>Amount</th>
+                    <th>Payment</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for w in washes %}
+                <tr>
+                    <td>{{ w.wash_date }}</td>
+                    <td>{{ w.wash_time }}</td>
+                    <td style="font-weight:600;">{{ w.registration_number }}</td>
+                    <td>{{ w.vehicle_name }}</td>
+                    {% if not is_staff %}
+                    <td>{{ w.staff_name }}</td>
+                    {% endif %}
+                    <td style="color:#d4af37; font-weight:600;">KSh {{ w.total_amount }}</td>
+                    <td>
+                        {{ w.payment_method }}
+                        {% if w.payment_method == 'Mixed' %}
+                            <br><small style="color:#888;">Cash {{ w.cash_amount }} + M-Pesa {{ w.mpesa_amount }}</small>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" style="color:#888; text-align:center;">
+                        No washes recorded this week.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

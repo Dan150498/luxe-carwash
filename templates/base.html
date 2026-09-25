@@ -35,6 +35,7 @@
                     <a href="{{ url_for('record_wash') }}" class="nav-item"><i class="fas fa-car"></i> Record Wash</a>
                     <a href="{{ url_for('todays_washes') }}" class="nav-item"><i class="fas fa-list"></i> Today's Washes</a>
                     <a href="{{ url_for('search') }}" class="nav-item"><i class="fas fa-search"></i> Search</a>
+                    <a href="{{ url_for('weekly_wash_history') }}" class="nav-item"><i class="fas fa-calendar-week"></i> Weekly History</a>
 
                     <div class="nav-section">COMMISSIONS</div>
                     <a href="{{ url_for('daily_commissions') }}" class="nav-item"><i class="fas fa-coins"></i> Daily Commissions</a>
@@ -65,6 +66,7 @@
                     <a href="{{ url_for('record_wash') }}" class="nav-item"><i class="fas fa-car"></i> Record Wash</a>
                     <a href="{{ url_for('todays_washes') }}" class="nav-item"><i class="fas fa-list"></i> Today's Washes</a>
                     <a href="{{ url_for('search') }}" class="nav-item"><i class="fas fa-search"></i> Search</a>
+                    <a href="{{ url_for('weekly_wash_history') }}" class="nav-item"><i class="fas fa-calendar-week"></i> Weekly History</a>
 
                     <div class="nav-section">INVENTORY</div>
                     <a href="{{ url_for('sell_product') }}" class="nav-item"><i class="fas fa-shopping-cart"></i> Sell Product</a>
@@ -72,6 +74,7 @@
 
                 {% elif session.get('role') == 'staff' %}
                     <a href="{{ url_for('staff_dashboard') }}" class="nav-item"><i class="fas fa-user"></i> My Dashboard</a>
+                    <a href="{{ url_for('weekly_wash_history') }}" class="nav-item"><i class="fas fa-calendar-week"></i> My Weekly History</a>
                 {% endif %}
 
             </nav>
