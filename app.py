@@ -584,7 +584,8 @@ def weekly_wash_history():
         total_cars=total_cars,
         prev_week=prev_week,
         next_week=next_week,
-        is_staff=(session["role"] == "staff")
+        is_staff=(session["role"] == "staff"),
+        hide_totals=(session["role"] == "cashier")   # ← add this
     )
 
 
