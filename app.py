@@ -513,6 +513,81 @@ def todays_washes():
 
     return render_template("todays_washes.html", washes=washes, total=total, today=today)
 
+@app.route("/weekly-wash-history")
+def weekly_wash_history():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+
+    # Week runs Monday → Sunday
+    start_of_week = today - timedelta(days=today.weekday())  # Monday
+    end_of_week = start_of_week + timedelta(days=6)          # Sunday
+
+    # Allow viewing a different week via ?start=YYYY-MM-DD
+    start_param = request.args.get("start")
+    if start_param:
+        try:
+            start_of_week = datetime.strptime(start_param, "%Y-%m-%d").date()
+            end_of_week = start_of_week + timedelta(days=6)
+        except:
+            pass
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if session["role"] == "staff":
+        staff_id = session.get("staff_id")
+        cursor.execute("""
+            SELECT w.wash_id, w.registration_number, w.wash_date, w.wash_time,
+                   w.total_amount, w.payment_method, w.cash_amount, w.mpesa_amount,
+                   vt.name as vehicle_name, s.full_name as staff_name
+            FROM washes w
+            JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
+            JOIN staff s ON w.staff_id = s.staff_id
+            WHERE w.staff_id = %s
+              AND w.wash_date BETWEEN %s AND %s
+              AND (w.status = 'completed' OR w.status IS NULL OR w.status = 'pending')
+            ORDER BY w.wash_date DESC, w.wash_id DESC
+        """, (staff_id, start_of_week, end_of_week))
+    else:
+        # Admin / Cashier see all
+        cursor.execute("""
+            SELECT w.wash_id, w.registration_number, w.wash_date, w.wash_time,
+                   w.total_amount, w.payment_method, w.cash_amount, w.mpesa_amount,
+                   vt.name as vehicle_name, s.full_name as staff_name
+            FROM washes w
+            JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
+            JOIN staff s ON w.staff_id = s.staff_id
+            WHERE w.wash_date BETWEEN %s AND %s
+              AND (w.status = 'completed' OR w.status IS NULL OR w.status = 'pending')
+            ORDER BY w.wash_date DESC, w.wash_id DESC
+        """, (start_of_week, end_of_week))
+
+    washes = cursor.fetchall()
+    total_amount = sum(w["total_amount"] or 0 for w in washes)
+    total_cars = len(washes)
+
+    cursor.close()
+    conn.close()
+
+    # Previous / Next week links
+    prev_week = (start_of_week - timedelta(days=7)).isoformat()
+    next_week = (start_of_week + timedelta(days=7)).isoformat()
+
+    return render_template(
+        "weekly_wash_history.html",
+        washes=washes,
+        start_of_week=start_of_week,
+        end_of_week=end_of_week,
+        total_amount=total_amount,
+        total_cars=total_cars,
+        prev_week=prev_week,
+        next_week=next_week,
+        is_staff=(session["role"] == "staff")
+    )
+
+
 # ====================== SEARCH ======================
 @app.route("/search")
 def search():
@@ -1332,6 +1407,7 @@ def setup_payments():
     conn.close()
     return message
 
+#========================================= SECURITY ===================================
 @app.route("/setup-security")
 def setup_security():
     if "user_id" not in session or session["role"] != "admin":
