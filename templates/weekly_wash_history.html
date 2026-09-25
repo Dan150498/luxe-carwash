@@ -37,10 +37,13 @@
             <div class="number">{{ total_cars }}</div>
             <div class="label">Cars This Week</div>
         </div>
+
+        {% if not hide_totals %}
         <div class="stat-box">
             <div class="number">KSh {{ total_amount }}</div>
             <div class="label">Total Amount</div>
         </div>
+        {% endif %}
     </div>
 
     <!-- History table -->
