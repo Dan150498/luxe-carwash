@@ -337,6 +337,62 @@ td {
         grid-template-columns: 1fr 1fr;
     }
 
+/* ===== LOGO ===== */
+.logo-area {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-content: center;
+}
+
+.logo-img {
+    width: 42px;
+    height: 42px;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.logo-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+}
+
+.logo-title {
+    color: #d4af37;
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+}
+
+.logo-subtitle {
+    color: #f0d77b;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 3px;
+}
+
+/* ===== NAV ICONS ===== */
+.nav-item i {
+    width: 22px;
+    margin-right: 10px;
+    text-align: center;
+    color: #d4af37;
+}
+
+.nav-item:hover i {
+    color: #f0d77b;
+}
+
+.nav-section {
+    color: #666;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 18px 25px 6px;
+    text-transform: uppercase;
+}
+
     .nav-section {
     color: #666;
     font-size: 0.7rem;
