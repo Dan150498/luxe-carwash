@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Advance - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:500px;">
+    <h2>Edit Advance</h2>
+    <p style="color:#888; margin-bottom:20px;">Staff: <strong>{{ advance.staff_name }}</strong></p>
+
+    <form method="POST">
+        <div class="form-group">
+            <label>Amount (KSh)</label>
+            <input type="number" name="amount" value="{{ advance.amount }}" required min="1"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Date</label>
+            <input type="date" name="advance_date" value="{{ advance.advance_date }}" required
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Notes</label>
+            <input type="text" name="notes" value="{{ advance.notes or '' }}"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <button type="submit" class="btn">Save Changes</button>
+        <a href="{{ url_for('staff_advances') }}" class="btn" style="background:#333; margin-left:10px;">Cancel</a>
+    </form>
+</div>
+{% endblock %}

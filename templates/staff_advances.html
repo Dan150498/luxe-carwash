@@ -52,13 +52,14 @@
     <h3 style="color:#d4af37; margin-bottom:15px;">Advances This Week</h3>
     <div class="table-responsive">
         <table>
-            <thead>
+           <thead>
                 <tr>
                     <th>Date</th>
                     <th>Staff</th>
                     <th>Amount</th>
                     <th>Notes</th>
                     <th>Recorded By</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -69,10 +70,16 @@
                     <td style="color:#ff6b6b; font-weight:600;">KSh {{ a.amount }}</td>
                     <td>{{ a.notes or '-' }}</td>
                     <td>{{ a.created_by_name or '-' }}</td>
+                    <td>
+                        <a href="{{ url_for('edit_advance', advance_id=a.advance_id) }}" style="color:#66d9ef; margin-right:10px;">Edit</a>
+                        <a href="{{ url_for('delete_advance', advance_id=a.advance_id) }}"
+                        style="color:#ff6b6b;"
+                        onclick="return confirm('Delete this advance?')">Delete</a>
+                    </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="5" style="color:#888;">No advances this week.</td>
+                    <td colspan="6" style="color:#888;">No advances this week.</td>
                 </tr>
                 {% endfor %}
             </tbody>
