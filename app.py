@@ -2867,6 +2867,79 @@ def staff_advances():
         end_of_week=end_of_week
     )
 
+@app.route("/advances/edit/<int:advance_id>", methods=["GET", "POST"])
+def edit_advance(advance_id):
+    if "user_id" not in session or session["role"] not in ("admin", "cashier"):
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("""
+        SELECT a.*, s.full_name as staff_name
+        FROM staff_advances a
+        JOIN staff s ON a.staff_id = s.staff_id
+        WHERE a.advance_id = %s
+    """, (advance_id,))
+    advance = cursor.fetchone()
+
+    if not advance:
+        cursor.close()
+        conn.close()
+        flash("Advance not found.", "danger")
+        return redirect(url_for("staff_advances"))
+
+    if request.method == "POST":
+        amount = request.form.get("amount", "0").strip()
+        notes = request.form.get("notes", "").strip()
+        advance_date = request.form.get("advance_date")
+
+        try:
+            amount = int(amount)
+            if amount <= 0:
+                flash("Amount must be greater than zero.", "danger")
+            else:
+                cursor.execute("""
+                    UPDATE staff_advances
+                    SET amount = %s, notes = %s, advance_date = %s
+                    WHERE advance_id = %s
+                """, (amount, notes, advance_date, advance_id))
+                conn.commit()
+                flash("Advance updated successfully!", "success")
+                cursor.close()
+                conn.close()
+                return redirect(url_for("staff_advances"))
+        except Exception as e:
+            flash("Error updating advance.", "danger")
+            print(e)
+
+    cursor.execute("SELECT staff_id, full_name FROM staff WHERE is_active = 1 ORDER BY full_name")
+    staff_list = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return render_template("edit_advance.html", advance=advance, staff_list=staff_list)
+
+
+@app.route("/advances/delete/<int:advance_id>")
+def delete_advance(advance_id):
+    if "user_id" not in session or session["role"] not in ("admin", "cashier"):
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM staff_advances WHERE advance_id = %s", (advance_id,))
+        conn.commit()
+        flash("Advance deleted successfully.", "success")
+    except Exception as e:
+        flash("Error deleting advance.", "danger")
+        print(e)
+    cursor.close()
+    conn.close()
+    return redirect(url_for("staff_advances"))
+
+
 @app.route("/check-time")
 def check_time():
     return {
