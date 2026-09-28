@@ -36,12 +36,13 @@
                     <a href="{{ url_for('todays_washes') }}" class="nav-item"><i class="fas fa-list"></i> Today's Washes</a>
                     <a href="{{ url_for('search') }}" class="nav-item"><i class="fas fa-search"></i> Search</a>
                     <a href="{{ url_for('weekly_wash_history') }}" class="nav-item"><i class="fas fa-calendar-week"></i> Weekly History</a>
+                    <a href="{{ url_for('daily_report') }}" class="nav-item"><i class="fas fa-chart-pie"></i> Daily Report</a>
 
                     <div class="nav-section">COMMISSIONS</div>
                     <a href="{{ url_for('daily_commissions') }}" class="nav-item"><i class="fas fa-coins"></i> Daily Commissions</a>
                     <a href="{{ url_for('weekly_commissions') }}" class="nav-item"><i class="fas fa-hand-holding-usd"></i> Weekly Payout</a>
                     <a href="{{ url_for('staff_performance') }}" class="nav-item"><i class="fas fa-chart-line"></i> Performance</a>
-                    <a href="{{ url_for('staff_advances') }}" class="nav-item"><i class="fas fa-money-bill-wave"></i> Staff Advances</a>
+                    <a href="{{ url_for('staff_advances') }}" class="nav-item"><i class="fas fa-money-bill-wave"></i> Staff Advances </a>
 
                     <div class="nav-section">INVENTORY</div>
                     <a href="{{ url_for('inventory_products') }}" class="nav-item"><i class="fas fa-box"></i> Products</a>
@@ -56,6 +57,7 @@
                     <a href="{{ url_for('manage_types_services') }}" class="nav-item"><i class="fas fa-cogs"></i> Types & Services</a>
                     <a href="{{ url_for('extra_approvals') }}" class="nav-item"><i class="fas fa-check-double"></i> Extra Approvals</a>
                     <a href="{{ url_for('reports') }}" class="nav-item"><i class="fas fa-file-alt"></i> Reports</a>
+
                     <a href="{{ url_for('backup_page') }}" class="nav-item"><i class="fas fa-database"></i> Database Backup</a>
 
                 {% elif session.get('role') == 'cashier' %}

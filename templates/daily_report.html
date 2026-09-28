@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Report - Luxe Carwash{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Daily Combined Report</h2>
+
+    <form method="GET" style="margin-bottom:25px;">
+        <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Select Date</label>
+                <input type="date" name="date" value="{{ selected_date }}"
+                       style="padding:10px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <button type="submit" class="btn">View Report</button>
+        </div>
+    </form>
+
+    <!-- Summary Cards -->
+    <div class="stats-grid" style="margin-bottom:30px;">
+        <div class="stat-box">
+            <div class="number">KSh {{ total_revenue }}</div>
+            <div class="label">Total Revenue</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">KSh {{ total_cash }}</div>
+            <div class="label">Total Cash</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">KSh {{ total_mpesa }}</div>
+            <div class="label">Total M-Pesa</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">{{ wash_stats.total_washes }}</div>
+            <div class="label">Washes</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">{{ product_stats.total_sales }}</div>
+            <div class="label">Products Sold</div>
+        </div>
+    </div>
+
+    <!-- Breakdown -->
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:30px;">
+        <div style="background:#111; border:1px solid #333; border-radius:8px; padding:18px;">
+            <h3 style="color:#d4af37; margin-bottom:12px;">Wash Revenue</h3>
+            <p>Total: <strong style="color:#d4af37;">KSh {{ wash_stats.wash_revenue }}</strong></p>
+            <p style="color:#888;">Cash: KSh {{ wash_stats.wash_cash }} | M-Pesa: KSh {{ wash_stats.wash_mpesa }}</p>
+        </div>
+        <div style="background:#111; border:1px solid #333; border-radius:8px; padding:18px;">
+            <h3 style="color:#d4af37; margin-bottom:12px;">Product Sales</h3>
+            <p>Total: <strong style="color:#d4af37;">KSh {{ product_stats.product_revenue }}</strong></p>
+            <p style="color:#888;">Cash: KSh {{ product_stats.product_cash }} | M-Pesa: KSh {{ product_stats.product_mpesa }}</p>
+        </div>
+    </div>
+
+    <!-- Washes List -->
+    <h3 style="color:#d4af37; margin-bottom:15px;">Washes</h3>
+    <div class="table-responsive" style="margin-bottom:35px;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Registration</th>
+                    <th>Vehicle</th>
+                    <th>Staff</th>
+                    <th>Amount</th>
+                    <th>Payment</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for w in washes %}
+                <tr>
+                    <td>{{ w.wash_time }}</td>
+                    <td>{{ w.registration_number }}</td>
+                    <td>{{ w.vehicle_name }}</td>
+                    <td>{{ w.staff_name }}</td>
+                    <td style="color:#d4af37;">KSh {{ w.total_amount }}</td>
+                    <td>{{ w.payment_method }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" style="color:#888;">No washes this day</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Product Sales List -->
+    <h3 style="color:#d4af37; margin-bottom:15px;">Product Sales</h3>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Product</th>
+                    <th>Qty</th>
+                    <th>Amount</th>
+                    <th>Payment</th>
+                    <th>Sold By</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in product_sales %}
+                <tr>
+                    <td>{{ s.created_at.strftime('%H:%M') if s.created_at else '-' }}</td>
+                    <td>{{ s.product_name }}</td>
+                    <td>{{ s.quantity }}</td>
+                    <td style="color:#d4af37;">KSh {{ s.amount }}</td>
+                    <td>{{ s.payment_method }}</td>
+                    <td>{{ s.sold_by or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" style="color:#888;">No product sales this day</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
