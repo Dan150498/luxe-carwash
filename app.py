@@ -772,6 +772,87 @@ def print_report():
                            start_date=start,
                            end_date=end)
 
+@app.route("/daily-report")
+def daily_report():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+    selected_date = request.args.get("date") or today.isoformat()
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # ===== WASHES =====
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_washes,
+            COALESCE(SUM(total_amount), 0) as wash_revenue,
+            COALESCE(SUM(cash_amount), 0) as wash_cash,
+            COALESCE(SUM(mpesa_amount), 0) as wash_mpesa
+        FROM washes
+        WHERE wash_date = %s
+          AND (status = 'completed' OR status IS NULL)
+    """, (selected_date,))
+    wash_stats = cursor.fetchone()
+
+    # ===== PRODUCT SALES =====
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_sales,
+            COALESCE(SUM(selling_price), 0) as product_revenue,
+            COALESCE(SUM(cash_amount), 0) as product_cash,
+            COALESCE(SUM(mpesa_amount), 0) as product_mpesa
+        FROM stock_movements
+        WHERE movement_type = 'sale'
+          AND created_at::date = %s
+    """, (selected_date,))
+    product_stats = cursor.fetchone()
+
+    # ===== COMBINED =====
+    total_revenue = (wash_stats["wash_revenue"] or 0) + (product_stats["product_revenue"] or 0)
+    total_cash = (wash_stats["wash_cash"] or 0) + (product_stats["product_cash"] or 0)
+    total_mpesa = (wash_stats["wash_mpesa"] or 0) + (product_stats["product_mpesa"] or 0)
+
+    # Recent washes list
+    cursor.execute("""
+        SELECT w.registration_number, s.full_name as staff_name, vt.name as vehicle_name,
+               w.total_amount, w.payment_method, w.wash_time
+        FROM washes w
+        JOIN staff s ON w.staff_id = s.staff_id
+        JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
+        WHERE w.wash_date = %s AND (w.status = 'completed' OR w.status IS NULL)
+        ORDER BY w.wash_id DESC
+    """, (selected_date,))
+    washes = cursor.fetchall()
+
+    # Product sales list
+    cursor.execute("""
+        SELECT p.name as product_name, m.quantity, m.selling_price as amount,
+               m.payment_method, u.full_name as sold_by, m.created_at
+        FROM stock_movements m
+        JOIN products p ON m.product_id = p.product_id
+        LEFT JOIN users u ON m.created_by = u.user_id
+        WHERE m.movement_type = 'sale' AND m.created_at::date = %s
+        ORDER BY m.created_at DESC
+    """, (selected_date,))
+    product_sales = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "daily_report.html",
+        selected_date=selected_date,
+        wash_stats=wash_stats,
+        product_stats=product_stats,
+        total_revenue=total_revenue,
+        total_cash=total_cash,
+        total_mpesa=total_mpesa,
+        washes=washes,
+        product_sales=product_sales
+    )
+
 # ====================== MANAGE STAFF ======================
 @app.route("/manage-staff")
 def manage_staff():
