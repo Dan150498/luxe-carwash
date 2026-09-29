@@ -67,7 +67,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 def current_shop_id():
     """Shop of the logged-in user. Defaults to Luxe (1)."""
     return session.get("shop_id") or 1
-    
+
 def get_connection():
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     return conn
@@ -3155,6 +3155,44 @@ def setup_shop_id_wash_edit():
     cursor.close()
     conn.close()
     return message
+
+@app.route("/setup-shop-ids-fix")
+def setup_shop_ids_fix():
+    if "user_id" not in session or session["role"] != "admin":
+        # Allow running even if login is broken: use a temporary secret key in URL
+        # Or log in won't work — so we use a simple token check for recovery
+        token = request.args.get("token")
+        if token != "oshasmart-setup-2026":
+            return "Unauthorized. Add ?token=oshasmart-setup-2026 to the URL", 403
+
+    conn = get_connection()
+    messages = []
+
+    tables = [
+        "users", "staff", "vehicle_types", "services", "prices", "washes",
+        "products", "product_categories", "stock_movements", "staff_advances",
+        "commission_payments", "wash_edit_requests"
+    ]
+
+    for table in tables:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"""
+                ALTER TABLE {table}
+                ADD COLUMN IF NOT EXISTS shop_id INTEGER DEFAULT 1
+            """)
+            cursor.execute(f"""
+                UPDATE {table} SET shop_id = 1 WHERE shop_id IS NULL
+            """)
+            conn.commit()
+            messages.append(f"OK: {table}")
+        except Exception as e:
+            conn.rollback()
+            messages.append(f"Skip {table}: {e}")
+        cursor.close()
+
+    conn.close()
+    return "<br>".join(messages)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
