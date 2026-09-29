@@ -3076,5 +3076,56 @@ def setup_multishop():
     conn.close()
     return message
 
+@app.route("/setup-shop-ids")
+def setup_shop_ids():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    messages = []
+
+    tables = [
+        "users",
+        "staff",
+        "vehicle_types",
+        "services",
+        "prices",
+        "washes",
+        "products",
+        "product_categories",
+        "stock_movements",
+        "staff_advances",
+        "commission_payments",
+        "price_change_requests",
+        "wash_edit_requests",
+    ]
+
+    try:
+        for table in tables:
+            try:
+                cursor.execute(f"""
+                    ALTER TABLE {table}
+                    ADD COLUMN IF NOT EXISTS shop_id INTEGER REFERENCES shops(shop_id) DEFAULT 1
+                """)
+                # Attach all existing rows to Luxe (shop 1)
+                cursor.execute(f"""
+                    UPDATE {table} SET shop_id = 1 WHERE shop_id IS NULL
+                """)
+                messages.append(f"OK: {table}")
+            except Exception as e:
+                messages.append(f"Skip/Error {table}: {e}")
+
+        conn.commit()
+        result = "shop_id added and existing data linked to Luxe (shop_id=1)<br>" + "<br>".join(messages)
+    except Exception as e:
+        conn.rollback()
+        result = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return result
+
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
