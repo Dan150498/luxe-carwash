@@ -520,24 +520,25 @@ def todays_washes():
     shop_id = current_shop_id()
     today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
 
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
     cursor.execute("""
-        SELECT 
-            COUNT(*) as total_washes,
-            COALESCE(SUM(total_amount), 0) as total_money,
-            COALESCE(SUM(cash_amount), 0) as cash_total,
-            COALESCE(SUM(mpesa_amount), 0) as mpesa_total
-        FROM washes
-        WHERE wash_date = %s
-        AND shop_id = %s
-        AND (status = 'completed' OR status IS NULL)
+        SELECT w.wash_id, w.registration_number, w.wash_time, w.total_amount,
+               w.payment_method, w.cash_amount, w.mpesa_amount, w.status,
+               s.full_name as staff_name, vt.name as vehicle_name
+        FROM washes w
+        JOIN staff s ON w.staff_id = s.staff_id
+        JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
+        WHERE w.wash_date = %s AND w.shop_id = %s
+        ORDER BY w.wash_id DESC
     """, (today, shop_id))
-    
+
     washes = cursor.fetchall()
-    total = sum(w["total_amount"] for w in washes) if washes else 0
     cursor.close()
     conn.close()
 
-    return render_template("todays_washes.html", washes=washes, total=total, today=today)
+    return render_template("todays_washes.html", washes=washes, today=today)
 
 @app.route("/weekly-wash-history")
 def weekly_wash_history():
