@@ -3194,5 +3194,16 @@ def setup_shop_ids_fix():
     conn.close()
     return "<br>".join(messages)
 
+@app.route("/check-shop")
+def check_shop():
+    if "user_id" not in session:
+        return "Not logged in"
+    return {
+        "user_id": session.get("user_id"),
+        "username": session.get("username"),
+        "role": session.get("role"),
+        "shop_id": session.get("shop_id"),
+        "full_name": session.get("full_name")
+    }
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
