@@ -3020,7 +3020,6 @@ def delete_advance(advance_id):
     conn.close()
     return redirect(url_for("staff_advances"))
 
-
 @app.route("/check-time")
 def check_time():
     return {
@@ -3029,6 +3028,53 @@ def check_time():
         "kenya_time": str(get_kenya_time()),
         "utc_now": str(datetime.utcnow())
     }
+
+
+
+#=================================================MULTISHOP==================================================================
+@app.route("/setup-multishop")
+def setup_multishop():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        # 1. Shops table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shops (
+                shop_id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                slug TEXT UNIQUE NOT NULL,
+                phone TEXT,
+                location TEXT,
+                is_active INTEGER DEFAULT 1,
+                plan TEXT DEFAULT 'standard',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # 2. Seed Luxe as shop 1 (OshaSmart platform, Luxe is the first tenant)
+        cursor.execute("""
+            INSERT INTO shops (shop_id, name, slug, location, plan)
+            VALUES (1, 'Luxe Carwash', 'luxe', 'Kenya', 'pro')
+            ON CONFLICT (shop_id) DO NOTHING
+        """)
+
+        # Fix sequence if needed (PostgreSQL)
+        cursor.execute("""
+            SELECT setval(pg_get_serial_sequence('shops', 'shop_id'), 
+                          COALESCE((SELECT MAX(shop_id) FROM shops), 1))
+        """)
+
+        conn.commit()
+        message = "OshaSmart multi-shop foundation created. Luxe Carwash = Shop ID 1"
+    except Exception as e:
+        conn.rollback()
+        message = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return message
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
