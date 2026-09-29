@@ -68,6 +68,9 @@ def current_shop_id():
     """Shop of the logged-in user. Defaults to Luxe (1)."""
     return session.get("shop_id") or 1
 
+def current_shop_id():
+    return session.get("shop_id") or 1
+
 def get_connection():
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     return conn
@@ -349,10 +352,19 @@ def record_wash():
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute("SELECT staff_id, full_name FROM staff WHERE is_active = 1 ORDER BY full_name")
-    staff = cursor.fetchall()
+    shop_id = current_shop_id()
+    cursor.execute("""
+        SELECT staff_id, full_name FROM staff
+        WHERE is_active = 1 AND shop_id = %s
+        ORDER BY full_name
+    """, (shop_id,))
 
-    cursor.execute("SELECT vehicle_type_id, name FROM vehicle_types ORDER BY vehicle_type_id")
+    shop_id = current_shop_id()
+    cursor.execute("""
+        SELECT vehicle_type_id, name FROM vehicle_types
+        WHERE shop_id = %s
+        ORDER BY vehicle_type_id
+    """, (shop_id,))
     vehicle_types = cursor.fetchall()
 
     if request.method == "POST":
@@ -414,12 +426,18 @@ def record_wash():
             payment_method = "Cash"
 
         try:
+            shop_id = current_shop_id()
+            kenya_today = get_kenya_today()
+            kenya_time = get_kenya_time()
+
             cursor.execute("""
                 INSERT INTO washes 
-                (registration_number, staff_id, vehicle_type_id, total_amount, payment_method, cash_amount, mpesa_amount)
-                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING wash_id
-            """, (reg, staff_id, vehicle_type_id, total, payment_method, cash_amount, mpesa_amount))
-            
+                (registration_number, staff_id, vehicle_type_id, total_amount,
+                payment_method, cash_amount, mpesa_amount, status, wash_date, wash_time, shop_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING wash_id
+            """, (reg, staff_id, vehicle_type_id, total, payment_method,
+                cash_amount, mpesa_amount, "completed", kenya_today, kenya_time, shop_id))
             wash_id = cursor.fetchone()["wash_id"]
 
             for s in service_details:
@@ -499,19 +517,20 @@ def todays_washes():
     if "user_id" not in session:
         return redirect(url_for("login"))
 
-    today = get_kenya_today().isoformat()
-    
-    conn = get_connection()
-    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    shop_id = current_shop_id()
+    today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+
     cursor.execute("""
-        SELECT w.wash_id, w.registration_number, s.full_name as staff_name, 
-               vt.name as vehicle_name, w.total_amount, w.payment_method, w.wash_time
-        FROM washes w
-        JOIN staff s ON w.staff_id = s.staff_id
-        JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
-        WHERE w.wash_date = %s
-        ORDER BY w.wash_id DESC
-    """, (today,))
+        SELECT 
+            COUNT(*) as total_washes,
+            COALESCE(SUM(total_amount), 0) as total_money,
+            COALESCE(SUM(cash_amount), 0) as cash_total,
+            COALESCE(SUM(mpesa_amount), 0) as mpesa_total
+        FROM washes
+        WHERE wash_date = %s
+        AND shop_id = %s
+        AND (status = 'completed' OR status IS NULL)
+    """, (today, shop_id))
     
     washes = cursor.fetchall()
     total = sum(w["total_amount"] for w in washes) if washes else 0
@@ -868,7 +887,13 @@ def manage_staff():
 
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cursor.execute("SELECT staff_id, full_name, phone, is_active FROM staff ORDER BY full_name")
+    
+    shop_id = current_shop_id()
+    cursor.execute("""
+        SELECT staff_id, full_name FROM staff
+        WHERE is_active = 1 AND shop_id = %s
+        ORDER BY full_name
+    """, (shop_id,))
     staff_list = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -955,7 +980,12 @@ def change_prices():
         else:
             flash("All fields are required.", "danger")
 
-    cursor.execute("SELECT vehicle_type_id, name FROM vehicle_types ORDER BY vehicle_type_id")
+    shop_id = current_shop_id()
+    cursor.execute("""
+        SELECT vehicle_type_id, name FROM vehicle_types
+        WHERE shop_id = %s
+        ORDER BY vehicle_type_id
+    """, (shop_id,))
     vehicle_types = cursor.fetchall()
 
     cursor.execute("SELECT service_id, name FROM services ORDER BY service_id")
@@ -986,7 +1016,12 @@ def manage_types_services():
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute("SELECT vehicle_type_id, name FROM vehicle_types ORDER BY vehicle_type_id")
+    shop_id = current_shop_id()
+    cursor.execute("""
+        SELECT vehicle_type_id, name FROM vehicle_types
+        WHERE shop_id = %s
+        ORDER BY vehicle_type_id
+    """, (shop_id,))
     vehicle_types = cursor.fetchall()
 
     cursor.execute("SELECT service_id, name FROM services ORDER BY service_id")
@@ -1192,7 +1227,12 @@ def edit_wash(wash_id):
     cursor.execute("SELECT staff_id, full_name FROM staff WHERE is_active = 1 ORDER BY full_name")
     staff = cursor.fetchall()
 
-    cursor.execute("SELECT vehicle_type_id, name FROM vehicle_types ORDER BY vehicle_type_id")
+    shop_id = current_shop_id()
+    cursor.execute("""
+        SELECT vehicle_type_id, name FROM vehicle_types
+        WHERE shop_id = %s
+        ORDER BY vehicle_type_id
+    """, (shop_id,))
     vehicle_types = cursor.fetchall()
 
     cursor.close()
@@ -1999,6 +2039,7 @@ def staff_dashboard():
                            start_of_week=start_of_week,
                            end_of_week=end_of_week)
 
+#==================================START WASH=====================
 @app.route("/setup-pending-wash")
 def setup_pending_wash():
     if "user_id" not in session or session["role"] != "admin":
@@ -2031,10 +2072,20 @@ def start_wash():
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute("SELECT staff_id, full_name FROM staff WHERE is_active = 1 ORDER BY full_name")
+    shop_id = current_shop_id()
+    cursor.execute("""
+        SELECT staff_id, full_name FROM staff
+        WHERE is_active = 1 AND shop_id = %s
+        ORDER BY full_name
+    """, (shop_id,))
     staff = cursor.fetchall()
 
-    cursor.execute("SELECT vehicle_type_id, name FROM vehicle_types ORDER BY vehicle_type_id")
+    shop_id = current_shop_id()
+    cursor.execute("""
+        SELECT vehicle_type_id, name FROM vehicle_types
+        WHERE shop_id = %s
+        ORDER BY vehicle_type_id
+    """, (shop_id,))
     vehicle_types = cursor.fetchall()
 
     if request.method == "POST":
@@ -2070,11 +2121,18 @@ def start_wash():
             return render_template("start_wash.html", staff=staff, vehicle_types=vehicle_types)
 
         try:
+            shop_id = current_shop_id()
+            kenya_today = get_kenya_today()
+            kenya_time = get_kenya_time()
+
             cursor.execute("""
                 INSERT INTO washes 
-                (registration_number, staff_id, vehicle_type_id, total_amount, payment_method, cash_amount, mpesa_amount, status)
-                VALUES (%s, %s, %s, %s, 'Pending', 0, 0, 'pending') RETURNING wash_id
-            """, (reg, staff_id, vehicle_type_id, total))
+                (registration_number, staff_id, vehicle_type_id, total_amount, 
+                payment_method, cash_amount, mpesa_amount, status, wash_date, wash_time, shop_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+                RETURNING wash_id
+            """, (reg, staff_id, vehicle_type_id, total, "Pending", 0, 0,
+                "pending", kenya_today, kenya_time, shop_id))
             
             wash_id = cursor.fetchone()["wash_id"]
 
@@ -2281,10 +2339,10 @@ def inventory_products():
 
             try:
                 cursor.execute("""
-                    INSERT INTO products 
-                    (name, category_id, cost_price, selling_price, stock_qty, low_stock_level, image_url)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (name, category_id, cost_price, selling_price, stock_qty, low_stock_level, image_url))
+                    INSERT INTO products
+                    (name, category_id, cost_price, selling_price, stock_qty, low_stock_level, image_url, shop_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (name, category_id, cost_price, selling_price, stock_qty, low_stock_level, image_url, current_shop_id()))
                 conn.commit()
                 flash(f"Product '{name}' added successfully!", "success")
             except Exception as e:
@@ -2329,13 +2387,14 @@ def inventory_products():
     cursor.execute("SELECT category_id, name FROM product_categories ORDER BY name")
     categories = cursor.fetchall()
 
+    shop_id = current_shop_id()
     cursor.execute("""
         SELECT p.*, c.name as category_name
         FROM products p
         LEFT JOIN product_categories c ON p.category_id = c.category_id
-        WHERE p.is_active = 1
+        WHERE p.is_active = 1 AND p.shop_id = %s
         ORDER BY p.name
-    """)
+    """, (shop_id,))
     products = cursor.fetchall()
 
     cursor.close()
@@ -2915,18 +2974,19 @@ def staff_advances():
             if amount <= 0:
                 flash("Amount must be greater than zero.", "danger")
             else:
+                # insert advance
                 cursor.execute("""
-                    INSERT INTO staff_advances (staff_id, amount, advance_date, notes, created_by)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (staff_id, amount, advance_date, notes, session["user_id"]))
+                    INSERT INTO staff_advances (staff_id, amount, advance_date, notes, created_by, shop_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (staff_id, amount, advance_date, notes, session["user_id"], shop_id))
                 conn.commit()
                 flash("Advance recorded successfully!", "success")
         except Exception as e:
             flash("Error recording advance.", "danger")
             print(e)
-
+    shop_id = current_shop_id()
     # Staff list
-    cursor.execute("SELECT staff_id, full_name FROM staff WHERE is_active = 1 ORDER BY full_name")
+    cursor.execute("SELECT staff_id, full_name FROM staff WHERE is_active = 1 AND shop_id = %s ORDER BY full_name", (shop_id,))
     staff_list = cursor.fetchall()
 
     # This week's advances
@@ -3196,6 +3256,7 @@ def setup_shop_ids_fix():
 
 @app.route("/check-shop")
 def check_shop():
+
     if "user_id" not in session:
         return "Not logged in"
     return {
@@ -3205,5 +3266,27 @@ def check_shop():
         "shop_id": session.get("shop_id"),
         "full_name": session.get("full_name")
     }
+
+@app.context_processor
+def inject_shop():
+    shop_name = "Luxe Carwash"
+    if session.get("shop_id"):
+        try:
+            conn = get_connection()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT name FROM shops WHERE shop_id = %s", (session["shop_id"],))
+            row = cur.fetchone()
+            if row:
+                shop_name = row["name"]
+            cur.close()
+            conn.close()
+        except:
+            pass
+    return {
+        "current_shop_name": shop_name,
+        "platform_name": "OshaSmart"
+    }
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
