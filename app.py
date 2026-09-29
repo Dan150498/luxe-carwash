@@ -462,7 +462,7 @@ def record_wash():
 
     cursor.close()
     conn.close()
-    return render_template("record_wash.html", staff=staff, vehicle_types=vehicle_types)s)
+    return render_template("record_wash.html", staff=staff, vehicle_types=vehicle_types)
 
 @app.route("/receipt/<int:wash_id>")
 def view_receipt(wash_id):
