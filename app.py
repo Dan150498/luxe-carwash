@@ -352,12 +352,7 @@ def record_wash():
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    shop_id = current_shop_id()
-    cursor.execute("""
-        SELECT staff_id, full_name FROM staff
-        WHERE is_active = 1 AND shop_id = %s
-        ORDER BY full_name
-    """, (shop_id,))
+    
 
     shop_id = current_shop_id()
     cursor.execute("""
