@@ -64,6 +64,10 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # ====================== DATABASE ======================
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
+def current_shop_id():
+    """Shop of the logged-in user. Defaults to Luxe (1)."""
+    return session.get("shop_id") or 1
+    
 def get_connection():
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     return conn
@@ -232,7 +236,7 @@ def login():
         conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
-            SELECT user_id, username, full_name, role, must_change_password, staff_id
+            SELECT user_id, username, full_name, role, must_change_password, staff_id, shop_id
             FROM users 
             WHERE username = %s AND password_hash = %s AND is_active = 1
         """, (username, hashed))
@@ -245,23 +249,26 @@ def login():
             session["username"] = user["username"]
             session["full_name"] = user["full_name"]
             session["role"] = user["role"]
+            session["shop_id"] = user.get("shop_id") or 1   # Luxe default
             session.permanent = True
 
-            # Force password change if required
+            if user.get("staff_id"):
+                session["staff_id"] = user["staff_id"]
+
             if user.get("must_change_password") == 1:
                 flash("You must change your password before continuing.", "info")
                 return redirect(url_for("change_password"))
 
             flash(f"Welcome, {user['full_name']}!", "success")
-            
+
             if user["role"] == "admin":
                 return redirect(url_for("dashboard"))
             elif user["role"] == "cashier":
                 return redirect(url_for("cashier_home"))
             elif user["role"] == "staff":
-                # Store staff_id in session
-                session["staff_id"] = user.get("staff_id")
                 return redirect(url_for("staff_dashboard"))
+            else:
+                return redirect(url_for("login"))
         else:
             flash("Invalid username or password", "danger")
 
@@ -3125,7 +3132,29 @@ def setup_shop_ids():
     conn.close()
     return result
 
+@app.route("/setup-shop-id-wash-edit")
+def setup_shop_id_wash_edit():
+    if "user_id" not in session or session["role"] != "admin":
+        return "Unauthorized", 403
 
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            ALTER TABLE wash_edit_requests
+            ADD COLUMN IF NOT EXISTS shop_id INTEGER REFERENCES shops(shop_id) DEFAULT 1
+        """)
+        cursor.execute("""
+            UPDATE wash_edit_requests SET shop_id = 1 WHERE shop_id IS NULL
+        """)
+        conn.commit()
+        message = "wash_edit_requests shop_id OK"
+    except Exception as e:
+        conn.rollback()
+        message = f"Skip or error (table may not exist): {e}"
+    cursor.close()
+    conn.close()
+    return message
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
