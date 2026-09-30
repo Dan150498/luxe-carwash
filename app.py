@@ -3335,16 +3335,10 @@ def create_shop():
                 """, (admin_username, hash_password(admin_password), admin_fullname, new_shop_id))
 
                 # 3. Optional: copy vehicle types from Luxe (shop 1) as starter
-                cursor.execute("""
-                    INSERT INTO vehicle_types (name, shop_id)
-                    SELECT name, %s FROM vehicle_types WHERE shop_id = 1
-                """, (new_shop_id,))
+                #cursor.execute("""INSERT INTO vehicle_types (name, shop_id)SELECT name, %s FROM vehicle_types WHERE shop_id = 1""", (new_shop_id,))
 
-                # 4. Optional: copy services from Luxe
-                cursor.execute("""
-                    INSERT INTO services (name, commission_rule, shop_id)
-                    SELECT name, commission_rule, %s FROM services WHERE shop_id = 1
-                """, (new_shop_id,))
+                #== 4. Optional: copy services from Luxe
+                #cursor.execute("""INSERT INTO services (name, commission_rule, shop_id)SELECT name, commission_rule, %s FROM services WHERE shop_id = 1""", (new_shop_id,))===
 
                 conn.commit()
                 flash(f"Shop '{name}' created (ID {new_shop_id}). Admin login: {admin_username}", "success")
@@ -3380,7 +3374,58 @@ def list_shops():
 
     return render_template("list_shops.html", shops=shops)
 
+@app.route("/setup-shop-unique-names")
+def setup_shop_unique_names():
+    token = request.args.get("token")
+    if token != "oshasmart-setup-2026":
+        if "user_id" not in session or session.get("role") != "superadmin":
+            return "Unauthorized. Use ?token=oshasmart-setup-2026", 403
 
+    conn = get_connection()
+    cursor = conn.cursor()
+    messages = []
+
+    try:
+        # vehicle_types: drop global unique on name, add per-shop unique
+        cursor.execute("""
+            ALTER TABLE vehicle_types DROP CONSTRAINT IF EXISTS vehicle_types_name_key
+        """)
+        messages.append("Dropped vehicle_types_name_key")
+
+        cursor.execute("""
+            ALTER TABLE vehicle_types
+            DROP CONSTRAINT IF EXISTS vehicle_types_shop_name_unique
+        """)
+        cursor.execute("""
+            ALTER TABLE vehicle_types
+            ADD CONSTRAINT vehicle_types_shop_name_unique UNIQUE (shop_id, name)
+        """)
+        messages.append("Added UNIQUE (shop_id, name) on vehicle_types")
+
+        # services: same pattern
+        cursor.execute("""
+            ALTER TABLE services DROP CONSTRAINT IF EXISTS services_name_key
+        """)
+        messages.append("Dropped services_name_key (if existed)")
+
+        cursor.execute("""
+            ALTER TABLE services
+            DROP CONSTRAINT IF EXISTS services_shop_name_unique
+        """)
+        cursor.execute("""
+            ALTER TABLE services
+            ADD CONSTRAINT services_shop_name_unique UNIQUE (shop_id, name)
+        """)
+        messages.append("Added UNIQUE (shop_id, name) on services")
+
+        conn.commit()
+        result = "OK<br>" + "<br>".join(messages)
+    except Exception as e:
+        conn.rollback()
+        result = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return result
 
 
 
