@@ -3283,5 +3283,56 @@ def inject_shop():
     }
 
 
+
+
+
+
+
+
+
+
+#==============================================superadmin=====================================================
+@app.route("/setup-superadmin")
+def setup_superadmin():
+    # Temporary token so this works even before superadmin exists
+    token = request.args.get("token")
+    if token != "oshasmart-setup-2026":
+        if "user_id" not in session or session.get("role") not in ("admin", "superadmin"):
+            return "Unauthorized. Use ?token=oshasmart-setup-2026", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check")
+        cursor.execute("""
+            ALTER TABLE users ADD CONSTRAINT users_role_check
+            CHECK (role IN ('superadmin', 'admin', 'cashier', 'staff'))
+        """)
+
+        # Create platform superadmin (not tied to a single shop)
+        # shop_id can be NULL for superadmin
+        cursor.execute("""
+            ALTER TABLE users ALTER COLUMN shop_id DROP NOT NULL
+        """)
+
+        cursor.execute("""
+            INSERT INTO users (username, password_hash, full_name, role, is_active, shop_id)
+            VALUES (%s, %s, %s, 'superadmin', 1, NULL)
+            ON CONFLICT (username) DO UPDATE
+            SET role = 'superadmin', shop_id = NULL, password_hash = EXCLUDED.password_hash
+        """, ("superadmin", hash_password("OshaSmart2026"), "OshaSmart Super Admin"))
+
+        conn.commit()
+        message = "Superadmin ready. Login: superadmin / OshaSmart2026 — CHANGE THIS PASSWORD after first login."
+    except Exception as e:
+        conn.rollback()
+        message = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return message
+
+
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
