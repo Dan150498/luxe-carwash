@@ -537,7 +537,20 @@ def todays_washes():
     cursor.close()
     conn.close()
 
-    return render_template("todays_washes.html", washes=washes, today=today)
+    total_amount = sum((w["total_amount"] or 0) for w in washes)
+    total_cash = sum((w["cash_amount"] or 0) for w in washes)
+    total_mpesa = sum((w["mpesa_amount"] or 0) for w in washes)
+    total_cars = len(washes)
+
+    return render_template(
+        "todays_washes.html",
+        washes=washes,
+        today=today,
+        total_amount=total_amount,
+        total_cash=total_cash,
+        total_mpesa=total_mpesa,
+        total_cars=total_cars
+    )
 
 @app.route("/weekly-wash-history")
 def weekly_wash_history():
