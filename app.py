@@ -65,10 +65,6 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def current_shop_id():
-    """Shop of the logged-in user. Defaults to Luxe (1)."""
-    return session.get("shop_id") or 1
-
-def current_shop_id():
     return session.get("shop_id") or 1
 
 def get_connection():
@@ -292,31 +288,62 @@ def logout():
     flash("You have been logged out.", "info")
     return redirect(url_for("login"))
 
+#====================================registration=======================================
+@app.route("/check-registration/<reg>")
+def check_registration(reg):
+    if "user_id" not in session:
+        return {"error": "Unauthorized"}, 401
+
+    shop_id = current_shop_id()
+    reg = reg.strip().upper()
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("""
+        SELECT vt.vehicle_type_id, vt.name
+        FROM washes w
+        JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
+        WHERE w.registration_number = %s AND w.shop_id = %s
+        ORDER BY w.wash_id ASC
+        LIMIT 1
+    """, (reg, shop_id))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if result:
+        return {
+            "exists": True,
+            "vehicle_type_id": result["vehicle_type_id"],
+            "vehicle_name": result["name"]
+        }
+    return {"exists": False}
+
+
 # ====================== DASHBOARD ======================
 @app.route("/dashboard")
 def dashboard():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
+    shop_id = current_shop_id()
     today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
-
-    # Show backup reminder every Saturday
-    show_backup_reminder = today.weekday() == 5  # Monday=0 ... Saturday=5
+    show_backup_reminder = today.weekday() == 5
 
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
     cursor.execute("""
-        SELECT 
+        SELECT
             COUNT(*) as total_washes,
             COALESCE(SUM(total_amount), 0) as total_money,
             COALESCE(SUM(cash_amount), 0) as cash_total,
             COALESCE(SUM(mpesa_amount), 0) as mpesa_total
         FROM washes
-        WHERE wash_date = %s AND (status = 'completed' OR status IS NULL)
-    """, (today,))
+        WHERE wash_date = %s
+          AND shop_id = %s
+          AND (status = 'completed' OR status IS NULL)
+    """, (today, shop_id))
     stats = cursor.fetchone()
-
     cursor.close()
     conn.close()
 
@@ -339,6 +366,7 @@ def get_services(vehicle_type_id):
     if "user_id" not in session:
         return {"error": "Unauthorized"}, 401
 
+    shop_id = current_shop_id()
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cursor.execute("""
@@ -346,12 +374,14 @@ def get_services(vehicle_type_id):
         FROM prices p
         JOIN services s ON p.service_id = s.service_id
         WHERE p.vehicle_type_id = %s
-        ORDER BY s.service_id
-    """, (vehicle_type_id,))
-    services = cursor.fetchall()
+          AND s.shop_id = %s
+          AND p.shop_id = %s
+        ORDER BY s.name
+    """, (vehicle_type_id, shop_id, shop_id))
+    data = cursor.fetchall()
     cursor.close()
     conn.close()
-    return services
+    return list(data)
 
 @app.route("/record-wash", methods=["GET", "POST"])
 def record_wash():
@@ -825,28 +855,27 @@ def daily_report():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
+    shop_id = current_shop_id()
     today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
     selected_date = request.args.get("date") or today.isoformat()
 
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # ===== WASHES =====
     cursor.execute("""
-        SELECT 
+        SELECT
             COUNT(*) as total_washes,
             COALESCE(SUM(total_amount), 0) as wash_revenue,
             COALESCE(SUM(cash_amount), 0) as wash_cash,
             COALESCE(SUM(mpesa_amount), 0) as wash_mpesa
         FROM washes
-        WHERE wash_date = %s
+        WHERE wash_date = %s AND shop_id = %s
           AND (status = 'completed' OR status IS NULL)
-    """, (selected_date,))
+    """, (selected_date, shop_id))
     wash_stats = cursor.fetchone()
 
-    # ===== PRODUCT SALES =====
     cursor.execute("""
-        SELECT 
+        SELECT
             COUNT(*) as total_sales,
             COALESCE(SUM(selling_price), 0) as product_revenue,
             COALESCE(SUM(cash_amount), 0) as product_cash,
@@ -854,36 +883,37 @@ def daily_report():
         FROM stock_movements
         WHERE movement_type = 'sale'
           AND created_at::date = %s
-    """, (selected_date,))
+          AND shop_id = %s
+    """, (selected_date, shop_id))
     product_stats = cursor.fetchone()
 
-    # ===== COMBINED =====
     total_revenue = (wash_stats["wash_revenue"] or 0) + (product_stats["product_revenue"] or 0)
     total_cash = (wash_stats["wash_cash"] or 0) + (product_stats["product_cash"] or 0)
     total_mpesa = (wash_stats["wash_mpesa"] or 0) + (product_stats["product_mpesa"] or 0)
 
-    # Recent washes list
     cursor.execute("""
         SELECT w.registration_number, s.full_name as staff_name, vt.name as vehicle_name,
                w.total_amount, w.payment_method, w.wash_time
         FROM washes w
         JOIN staff s ON w.staff_id = s.staff_id
         JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
-        WHERE w.wash_date = %s AND (w.status = 'completed' OR w.status IS NULL)
+        WHERE w.wash_date = %s AND w.shop_id = %s
+          AND (w.status = 'completed' OR w.status IS NULL)
         ORDER BY w.wash_id DESC
-    """, (selected_date,))
+    """, (selected_date, shop_id))
     washes = cursor.fetchall()
 
-    # Product sales list
     cursor.execute("""
         SELECT p.name as product_name, m.quantity, m.selling_price as amount,
                m.payment_method, u.full_name as sold_by, m.created_at
         FROM stock_movements m
         JOIN products p ON m.product_id = p.product_id
         LEFT JOIN users u ON m.created_by = u.user_id
-        WHERE m.movement_type = 'sale' AND m.created_at::date = %s
+        WHERE m.movement_type = 'sale'
+          AND m.created_at::date = %s
+          AND m.shop_id = %s
         ORDER BY m.created_at DESC
-    """, (selected_date,))
+    """, (selected_date, shop_id))
     product_sales = cursor.fetchall()
 
     cursor.close()
@@ -1032,30 +1062,65 @@ def change_prices():
                            prices=prices)
 
 # ====================== MANAGE TYPES & SERVICES ======================
-@app.route("/manage-types-services")
+@app.route("/manage-types-services", methods=["GET", "POST"])
 def manage_types_services():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
+    shop_id = current_shop_id()
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    shop_id = current_shop_id()
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        if action == "add_type":
+            name = request.form.get("type_name", "").strip()
+            if name:
+                try:
+                    cursor.execute("""
+                        INSERT INTO vehicle_types (name, shop_id)
+                        VALUES (%s, %s)
+                    """, (name, shop_id))
+                    conn.commit()
+                    flash(f"Vehicle type '{name}' added.", "success")
+                except Exception as e:
+                    flash(f"Error: {e}", "danger")
+
+        elif action == "add_service":
+            name = request.form.get("service_name", "").strip()
+            rule = request.form.get("commission_rule", "standard")
+            if name:
+                try:
+                    cursor.execute("""
+                        INSERT INTO services (name, commission_rule, shop_id)
+                        VALUES (%s, %s, %s)
+                    """, (name, rule, shop_id))
+                    conn.commit()
+                    flash(f"Service '{name}' added.", "success")
+                except Exception as e:
+                    flash(f"Error: {e}", "danger")
+
     cursor.execute("""
         SELECT vehicle_type_id, name FROM vehicle_types
-        WHERE shop_id = %s
-        ORDER BY vehicle_type_id
+        WHERE shop_id = %s ORDER BY name
     """, (shop_id,))
     vehicle_types = cursor.fetchall()
 
-    cursor.execute("SELECT service_id, name FROM services ORDER BY service_id")
+    cursor.execute("""
+        SELECT service_id, name, commission_rule FROM services
+        WHERE shop_id = %s ORDER BY name
+    """, (shop_id,))
     services = cursor.fetchall()
+
     cursor.close()
     conn.close()
 
-    return render_template("manage_types_services.html",
-                           vehicle_types=vehicle_types,
-                           services=services)
+    return render_template(
+        "manage_types_services.html",
+        vehicle_types=vehicle_types,
+        services=services
+    )
 
 @app.route("/add-vehicle-type", methods=["POST"])
 def add_vehicle_type():
@@ -1453,122 +1518,43 @@ def weekly_commissions():
                            end_date=end_date,
                            grand_total=unpaid_total)
 
-@app.route("/performance")
+@app.route("/staff-performance")
 def staff_performance():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
-    today = get_kenya_today()
-    default_start = (today - timedelta(days=30)).isoformat()
-    default_end = today.isoformat()
-
-    start_date = request.args.get("start") or default_start
-    end_date = request.args.get("end") or default_end
+    shop_id = current_shop_id()
+    today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+    start_date = request.args.get("start") or (today - timedelta(days=30)).isoformat()
+    end_date = request.args.get("end") or today.isoformat()
 
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Staff Performance
     cursor.execute("""
-        SELECT 
-            s.staff_id,
-            s.full_name,
-            COUNT(DISTINCT w.wash_id) AS total_washes,
-            COALESCE(SUM(w.total_amount), 0) AS total_revenue,
-            COALESCE(SUM(ws.commission_amount), 0) AS total_commission,
-            CASE 
-                WHEN COUNT(DISTINCT w.wash_id) > 0 
-                THEN ROUND(COALESCE(SUM(w.total_amount), 0)::numeric / COUNT(DISTINCT w.wash_id), 0)
-                ELSE 0 
-            END AS avg_per_wash
+        SELECT s.staff_id, s.full_name,
+               COUNT(DISTINCT w.wash_id) as total_washes,
+               COALESCE(SUM(ws.commission_amount), 0) as total_commission,
+               COALESCE(SUM(w.total_amount), 0) as total_revenue
         FROM staff s
-        LEFT JOIN washes w ON s.staff_id = w.staff_id 
+        LEFT JOIN washes w ON s.staff_id = w.staff_id
+            AND w.shop_id = %s
             AND w.wash_date BETWEEN %s AND %s
         LEFT JOIN wash_services ws ON w.wash_id = ws.wash_id
-        WHERE s.is_active = 1
+        WHERE s.is_active = 1 AND s.shop_id = %s
         GROUP BY s.staff_id, s.full_name
-        ORDER BY total_revenue DESC
-    """, (start_date, end_date))
-    staff_results = cursor.fetchall()
-
-    total_washes = sum(r["total_washes"] for r in staff_results)
-    total_revenue = sum(r["total_revenue"] for r in staff_results)
-    total_commission = sum(r["total_commission"] for r in staff_results)
-
-    # Top Services
-    cursor.execute("""
-        SELECT 
-            s.name AS service_name,
-            COUNT(*) AS times_done,
-            COALESCE(SUM(ws.amount), 0) AS total_revenue
-        FROM wash_services ws
-        JOIN services s ON ws.service_id = s.service_id
-        JOIN washes w ON ws.wash_id = w.wash_id
-        WHERE w.wash_date BETWEEN %s AND %s
-        GROUP BY s.name
-        ORDER BY times_done DESC
-        LIMIT 10
-    """, (start_date, end_date))
-    top_services = cursor.fetchall()
-
-    # Busiest Days
-    cursor.execute("""
-        SELECT 
-            w.wash_date,
-            TO_CHAR(w.wash_date, 'Day') AS day_name,
-            COUNT(*) AS total_washes,
-            COALESCE(SUM(w.total_amount), 0) AS total_revenue
-        FROM washes w
-        WHERE w.wash_date BETWEEN %s AND %s
-        GROUP BY w.wash_date
-        ORDER BY total_washes DESC
-        LIMIT 10
-    """, (start_date, end_date))
-    busiest_days = cursor.fetchall()
-
-    # Weekly Comparison
-    cursor.execute("""
-        SELECT 
-            DATE_TRUNC('week', w.wash_date)::date AS week_start,
-            COUNT(*) AS total_washes,
-            COALESCE(SUM(w.total_amount), 0) AS total_revenue
-        FROM washes w
-        WHERE w.wash_date >= CURRENT_DATE - INTERVAL '56 days'
-        GROUP BY week_start
-        ORDER BY week_start DESC
-        LIMIT 8
-    """)
-    weekly_comparison = cursor.fetchall()
-
-    # Monthly Comparison
-    cursor.execute("""
-        SELECT 
-            TO_CHAR(w.wash_date, 'YYYY-MM') AS month,
-            COUNT(*) AS total_washes,
-            COALESCE(SUM(w.total_amount), 0) AS total_revenue
-        FROM washes w
-        WHERE w.wash_date >= CURRENT_DATE - INTERVAL '180 days'
-        GROUP BY month
-        ORDER BY month DESC
-        LIMIT 6
-    """)
-    monthly_comparison = cursor.fetchall()
-
+        ORDER BY total_commission DESC
+    """, (shop_id, start_date, end_date, shop_id))
+    results = cursor.fetchall()
     cursor.close()
     conn.close()
 
-    return render_template("staff_performance.html",
-                           staff_results=staff_results,
-                           top_services=top_services,
-                           busiest_days=busiest_days,
-                           weekly_comparison=weekly_comparison,
-                           monthly_comparison=monthly_comparison,
-                           start_date=start_date,
-                           end_date=end_date,
-                           total_washes=total_washes,
-                           total_revenue=total_revenue,
-                           total_commission=total_commission)
-
+    return render_template(
+        "staff_performance.html",
+        results=results,
+        start_date=start_date,
+        end_date=end_date
+    )
 @app.route("/setup-payments")
 def setup_payments():
     if "user_id" not in session or session["role"] != "admin":
@@ -2483,6 +2469,7 @@ def sell_product():
     if "user_id" not in session:
         return redirect(url_for("login"))
 
+    shop_id = current_shop_id()
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -2499,7 +2486,10 @@ def sell_product():
             mpesa_amount = int(mpesa_amount or 0)
             agreed_amount = int(agreed_amount_raw) if agreed_amount_raw else 0
 
-            cursor.execute("SELECT * FROM products WHERE product_id = %s", (product_id,))
+            cursor.execute("""
+                SELECT * FROM products
+                WHERE product_id = %s AND shop_id = %s
+            """, (product_id, shop_id))
             product = cursor.fetchone()
 
             if not product:
@@ -2508,11 +2498,10 @@ def sell_product():
                 flash(f"Not enough stock. Only {product['stock_qty']} available.", "danger")
             else:
                 min_total = product["selling_price"] * quantity
-
                 if agreed_amount < min_total:
-                    flash(f"Amount cannot be below the selling price of KSh {min_total}.", "danger")
+                    flash(f"Amount cannot be below KSh {min_total}.", "danger")
                 elif cash_amount + mpesa_amount != agreed_amount:
-                    flash(f"Cash + M-Pesa must equal the agreed amount of KSh {agreed_amount}.", "danger")
+                    flash(f"Cash + M-Pesa must equal KSh {agreed_amount}.", "danger")
                 else:
                     if cash_amount > 0 and mpesa_amount > 0:
                         payment_method = "Mixed"
@@ -2522,29 +2511,27 @@ def sell_product():
                         payment_method = "Cash"
 
                     cursor.execute("""
-                        UPDATE products SET stock_qty = stock_qty - %s 
-                        WHERE product_id = %s
-                    """, (quantity, product_id))
+                        UPDATE products SET stock_qty = stock_qty - %s
+                        WHERE product_id = %s AND shop_id = %s
+                    """, (quantity, product_id, shop_id))
 
                     cursor.execute("""
                         INSERT INTO stock_movements
                         (product_id, movement_type, quantity, selling_price, payment_method,
-                        cash_amount, mpesa_amount, created_by, shop_id)
+                         cash_amount, mpesa_amount, created_by, shop_id)
                         VALUES (%s, 'sale', %s, %s, %s, %s, %s, %s, %s)
                     """, (product_id, quantity, agreed_amount, payment_method,
-                        cash_amount, mpesa_amount, session["user_id"], shop_id))
+                          cash_amount, mpesa_amount, session["user_id"], shop_id))
 
                     conn.commit()
                     flash(f"Sold {quantity} x {product['name']} for KSh {agreed_amount}", "success")
                     cursor.close()
                     conn.close()
                     return redirect(url_for("sell_product"))
-
         except Exception as e:
             flash("Error processing sale. Please check the amounts.", "danger")
             print(e)
 
-    shop_id = current_shop_id()
     cursor.execute("""
         SELECT product_id, name, selling_price, stock_qty
         FROM products
@@ -2556,53 +2543,54 @@ def sell_product():
     conn.close()
 
     return render_template("sell_product.html", products=products)
-
 @app.route("/inventory/report")
 def inventory_report():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
+    shop_id = current_shop_id()
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Current stock status
     cursor.execute("""
-        SELECT p.name, c.name as category, p.cost_price, p.selling_price, 
+        SELECT p.name, c.name as category, p.cost_price, p.selling_price,
                p.stock_qty, p.low_stock_level,
                (p.stock_qty * p.cost_price) as stock_value
         FROM products p
         LEFT JOIN product_categories c ON p.category_id = c.category_id
-        WHERE p.is_active = 1
+        WHERE p.is_active = 1 AND p.shop_id = %s
         ORDER BY p.name
-    """)
+    """, (shop_id,))
     products = cursor.fetchall()
 
     total_items = sum(p["stock_qty"] for p in products)
-    total_value = sum(p["stock_value"] for p in products)
+    total_value = sum(p["stock_value"] or 0 for p in products)
     low_stock_count = sum(1 for p in products if p["stock_qty"] <= p["low_stock_level"])
 
-    # Recent sales (last 30 days)
     cursor.execute("""
-        SELECT p.name, SUM(m.quantity) as qty_sold, 
-               SUM(m.quantity * m.selling_price) as revenue
+        SELECT p.name, SUM(m.quantity) as qty_sold,
+               SUM(m.selling_price) as revenue
         FROM stock_movements m
         JOIN products p ON m.product_id = p.product_id
-        WHERE m.movement_type = 'sale' 
+        WHERE m.movement_type = 'sale'
+          AND m.shop_id = %s
           AND m.created_at >= CURRENT_DATE - INTERVAL '30 days'
         GROUP BY p.name
         ORDER BY qty_sold DESC
-    """)
+    """, (shop_id,))
     recent_sales = cursor.fetchall()
 
     cursor.close()
     conn.close()
 
-    return render_template("inventory_report.html",
-                           products=products,
-                           total_items=total_items,
-                           total_value=total_value,
-                           low_stock_count=low_stock_count,
-                           recent_sales=recent_sales)
+    return render_template(
+        "inventory_report.html",
+        products=products,
+        total_items=total_items,
+        total_value=total_value,
+        low_stock_count=low_stock_count,
+        recent_sales=recent_sales
+    )
 
 @app.route("/setup-product-image")
 def setup_product_image():
@@ -3297,12 +3285,6 @@ def create_shop():
         flash("Only OshaSmart Super Admin can create shops.", "danger")
         return redirect(url_for("login"))
 
-    # Optional: only Luxe/platform admin should create shops for now
-    # (shop_id 1 = Luxe / first setup account)
-    if session.get("shop_id") not in (1, None):
-        flash("Only the platform admin can create new shops.", "danger")
-        return redirect(url_for("dashboard"))
-
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         slug = request.form.get("slug", "").strip().lower().replace(" ", "-")
@@ -3320,7 +3302,6 @@ def create_shop():
             conn = get_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             try:
-                # 1. Create shop
                 cursor.execute("""
                     INSERT INTO shops (name, slug, phone, location, plan, is_active)
                     VALUES (%s, %s, %s, %s, %s, 1)
@@ -3328,23 +3309,17 @@ def create_shop():
                 """, (name, slug, phone, location, plan))
                 new_shop_id = cursor.fetchone()["shop_id"]
 
-                # 2. Create shop admin user
                 cursor.execute("""
                     INSERT INTO users (username, password_hash, full_name, role, is_active, shop_id)
                     VALUES (%s, %s, %s, 'admin', 1, %s)
                 """, (admin_username, hash_password(admin_password), admin_fullname, new_shop_id))
 
-                # 3. Optional: copy vehicle types from Luxe (shop 1) as starter
-                #cursor.execute("""INSERT INTO vehicle_types (name, shop_id)SELECT name, %s FROM vehicle_types WHERE shop_id = 1""", (new_shop_id,))
-
-                #== 4. Optional: copy services from Luxe
-                #cursor.execute("""INSERT INTO services (name, commission_rule, shop_id)SELECT name, commission_rule, %s FROM services WHERE shop_id = 1""", (new_shop_id,))===
-
+                # NO copy of types/services/prices — shop starts empty
                 conn.commit()
-                flash(f"Shop '{name}' created (ID {new_shop_id}). Admin login: {admin_username}", "success")
+                flash(f"Shop '{name}' created (ID {new_shop_id}). Admin: {admin_username}. Shop starts empty.", "success")
                 cursor.close()
                 conn.close()
-                return redirect(url_for("list_shops"))
+                return redirect(url_for("platform_dashboard"))
             except Exception as e:
                 conn.rollback()
                 cursor.close()
@@ -3427,6 +3402,32 @@ def setup_shop_unique_names():
     conn.close()
     return result
 
+@app.route("/cleanup-shop-2")
+def cleanup_shop_2():
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM wash_services WHERE wash_id IN (SELECT wash_id FROM washes WHERE shop_id = 2)")
+        cursor.execute("DELETE FROM washes WHERE shop_id = 2")
+        cursor.execute("DELETE FROM stock_movements WHERE shop_id = 2")
+        cursor.execute("DELETE FROM products WHERE shop_id = 2")
+        cursor.execute("DELETE FROM prices WHERE shop_id = 2")
+        cursor.execute("DELETE FROM services WHERE shop_id = 2")
+        cursor.execute("DELETE FROM vehicle_types WHERE shop_id = 2")
+        cursor.execute("DELETE FROM staff_advances WHERE shop_id = 2")
+        cursor.execute("DELETE FROM commission_payments WHERE shop_id = 2")
+        cursor.execute("DELETE FROM staff WHERE shop_id = 2")
+        conn.commit()
+        msg = "Shop 2 cleared. Extreme admin can set up everything from zero."
+    except Exception as e:
+        conn.rollback()
+        msg = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return msg
 
 
 
