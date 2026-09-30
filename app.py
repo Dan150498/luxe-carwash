@@ -90,94 +90,93 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        user_id SERIAL PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        full_name TEXT NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('admin', 'cashier')),
-        is_active INTEGER DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                full_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS staff (
-        staff_id SERIAL PRIMARY KEY,
-        full_name TEXT NOT NULL,
-        phone TEXT,
-        is_active INTEGER DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS staff (
+                staff_id SERIAL PRIMARY KEY,
+                full_name TEXT NOT NULL,
+                phone TEXT,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS vehicle_types (
-        vehicle_type_id SERIAL PRIMARY KEY,
-        name TEXT UNIQUE NOT NULL,
-        description TEXT
-    );
-    """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vehicle_types (
+                vehicle_type_id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT
+            )
+        """)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS services (
-        service_id SERIAL PRIMARY KEY,
-        name TEXT UNIQUE NOT NULL,
-        is_package INTEGER DEFAULT 0,
-        commission_rule TEXT DEFAULT 'standard',
-        is_adjustment INTEGER DEFAULT 0
-    );
-    """)
-    # Backfill for databases created before these columns existed
-    cursor.execute("ALTER TABLE services ADD COLUMN IF NOT EXISTS commission_rule TEXT DEFAULT 'standard'")
-    cursor.execute("ALTER TABLE services ADD COLUMN IF NOT EXISTS is_adjustment INTEGER DEFAULT 0")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS services (
+                service_id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                is_package INTEGER DEFAULT 0,
+                commission_rule TEXT DEFAULT 'standard',
+                is_adjustment INTEGER DEFAULT 0
+            )
+        """)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS prices (
-        price_id SERIAL PRIMARY KEY,
-        vehicle_type_id INTEGER REFERENCES vehicle_types(vehicle_type_id),
-        service_id INTEGER REFERENCES services(service_id),
-        amount INTEGER NOT NULL,
-        UNIQUE(vehicle_type_id, service_id)
-    );
-    """)
+        cursor.execute("ALTER TABLE services ADD COLUMN IF NOT EXISTS commission_rule TEXT DEFAULT 'standard'")
+        cursor.execute("ALTER TABLE services ADD COLUMN IF NOT EXISTS is_adjustment INTEGER DEFAULT 0")
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS washes (
-        wash_id SERIAL PRIMARY KEY,
-        registration_number TEXT NOT NULL,
-        staff_id INTEGER REFERENCES staff(staff_id),
-        vehicle_type_id INTEGER REFERENCES vehicle_types(vehicle_type_id),
-        wash_date DATE DEFAULT CURRENT_DATE,
-        wash_time TIME DEFAULT CURRENT_TIME,
-        total_amount INTEGER NOT NULL,
-        payment_method TEXT DEFAULT 'Cash',
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS prices (
+                price_id SERIAL PRIMARY KEY,
+                vehicle_type_id INTEGER REFERENCES vehicle_types(vehicle_type_id),
+                service_id INTEGER REFERENCES services(service_id),
+                amount INTEGER NOT NULL,
+                UNIQUE(vehicle_type_id, service_id)
+            )
+        """)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS wash_services (
-        wash_service_id SERIAL PRIMARY KEY,
-        wash_id INTEGER REFERENCES washes(wash_id) ON DELETE CASCADE,
-        service_id INTEGER REFERENCES services(service_id),
-        amount INTEGER NOT NULL,
-        commission_amount INTEGER DEFAULT 0
-    );
-    """)
-    # Backfill for databases created before this column existed
-    cursor.execute("ALTER TABLE wash_services ADD COLUMN IF NOT EXISTS commission_amount INTEGER DEFAULT 0")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS washes (
+                wash_id SERIAL PRIMARY KEY,
+                registration_number TEXT NOT NULL,
+                staff_id INTEGER REFERENCES staff(staff_id),
+                vehicle_type_id INTEGER REFERENCES vehicle_types(vehicle_type_id),
+                wash_date DATE DEFAULT CURRENT_DATE,
+                wash_time TIME DEFAULT CURRENT_TIME,
+                total_amount INTEGER NOT NULL,
+                payment_method TEXT DEFAULT 'Cash',
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
-    # Ensure shop_id columns exist (safe if already added)
-    for table in ("users", "staff", "vehicle_types", "services", "prices", "washes"):
-        try:
-            cursor.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS shop_id INTEGER DEFAULT 1")
-        except Exception:
-            pass
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS wash_services (
+                wash_service_id SERIAL PRIMARY KEY,
+                wash_id INTEGER REFERENCES washes(wash_id) ON DELETE CASCADE,
+                service_id INTEGER REFERENCES services(service_id),
+                amount INTEGER NOT NULL,
+                commission_amount INTEGER DEFAULT 0
+            )
+        """)
 
-    # Seed admin only if missing
+        cursor.execute("ALTER TABLE wash_services ADD COLUMN IF NOT EXISTS commission_amount INTEGER DEFAULT 0")
+
+        for table in ("users", "staff", "vehicle_types", "services", "prices", "washes"):
+            try:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS shop_id INTEGER DEFAULT 1")
+            except Exception:
+                pass
+
         cursor.execute("SELECT 1 FROM users WHERE username = %s", ("admin",))
         if not cursor.fetchone():
             cursor.execute("""
@@ -189,7 +188,6 @@ def init_db():
                 VALUES (%s, %s, %s, %s, 1)
             """, ("cashier1", hash_password("cashier123"), "Cashier One", "cashier"))
 
-        # Default vehicle types for Luxe (shop 1) — NO ON CONFLICT (name)
         vehicles = ["Matatu", "5-seater", "7-seater", "31-seater Bus", "51-seater Bus", "Lorry"]
         for v in vehicles:
             cursor.execute("""
@@ -202,7 +200,6 @@ def init_db():
                     (v,)
                 )
 
-        # Default services for Luxe (shop 1) — NO ON CONFLICT (name)
         services = [
             ("General Wash", 0, "standard", 0),
             ("General + Vacuum", 1, "standard", 0),
@@ -232,14 +229,16 @@ def init_db():
                     VALUES (%s, %s, %s, %s, 1)
                 """, (name, is_pkg, rule, is_adj))
 
-            conn.commit()
-            print("Database initialized successfully!")
-        except Exception as e:
-            conn.rollback()
-            print(f"DB init error: {e}")
-        finally:
-            cursor.close()
-            conn.close()
+        conn.commit()
+        print("Database initialized successfully!")
+
+    except Exception as e:
+        conn.rollback()
+        print(f"DB init error: {e}")
+
+    finally:
+        cursor.close()
+        conn.close()
 # ====================== LOGIN ======================
 @app.route("/")
 def home():
