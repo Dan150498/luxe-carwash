@@ -243,8 +243,13 @@ def init_db():
 @app.route("/")
 def home():
     if "user_id" in session:
-        if session["role"] == "admin":
+        role = session.get("role")
+        if role == "superadmin":
+            return redirect(url_for("platform_dashboard"))
+        elif role == "admin":
             return redirect(url_for("dashboard"))
+        elif role == "staff":
+            return redirect(url_for("staff_dashboard"))
         else:
             return redirect(url_for("cashier_home"))
     return redirect(url_for("login"))
@@ -397,9 +402,10 @@ def get_services(vehicle_type_id):
         SELECT s.service_id, s.name, p.amount
         FROM prices p
         JOIN services s ON p.service_id = s.service_id
+        JOIN vehicle_types vt ON p.vehicle_type_id = vt.vehicle_type_id
         WHERE p.vehicle_type_id = %s
           AND s.shop_id = %s
-          AND p.shop_id = %s
+          AND vt.shop_id = %s
         ORDER BY s.name
     """, (vehicle_type_id, shop_id, shop_id))
     data = cursor.fetchall()
@@ -810,18 +816,18 @@ def export_report():
 
     conn = get_connection()
     query = """
-        SELECT 
+        SELECT
             s.full_name as "Staff Name",
             COUNT(w.wash_id) as "Total Washes",
             SUM(w.total_amount) as "Total Earned (KSh)"
         FROM washes w
         JOIN staff s ON w.staff_id = s.staff_id
         WHERE w.wash_date BETWEEN %s AND %s
-            AND w.shop_id = %s
+          AND w.shop_id = %s
         GROUP BY s.staff_id, s.full_name
-        ORDER BY SUM(w.total_amount,) DESC
-    """(current_shop_id())
-    df = pd.read_sql_query(query, conn, params=(start, end))
+        ORDER BY SUM(w.total_amount) DESC
+    """
+    df = pd.read_sql_query(query, conn, params=(start, end, current_shop_id()))
     conn.close()
 
     if fmt == "csv":
