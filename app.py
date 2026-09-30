@@ -1036,6 +1036,8 @@ def change_prices():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
+    shop_id = current_shop_id()
+
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -1057,41 +1059,44 @@ def change_prices():
                 flash("Price saved successfully!", "success")
             except Exception as e:
                 flash("Something went wrong. Please try again or contact the administrator.", "danger")
-                print(f"Error: {e}")   # this still logs the real error for you
+                print(f"Error: {e}")
         else:
             flash("All fields are required.", "danger")
 
-            shop_id = current_shop_id()
-                cursor.execute("""
-                    SELECT vehicle_type_id, name FROM vehicle_types
-                    WHERE shop_id = %s
-                    ORDER BY vehicle_type_id
-                """, (shop_id,))
-                vehicle_types = cursor.fetchall()
+    # Always load lists for the page (GET and after POST)
+    cursor.execute("""
+        SELECT vehicle_type_id, name FROM vehicle_types
+        WHERE shop_id = %s
+        ORDER BY vehicle_type_id
+    """, (shop_id,))
+    vehicle_types = cursor.fetchall()
 
-                cursor.execute("""
-                    SELECT service_id, name FROM services
-                    WHERE shop_id = %s
-                    ORDER BY service_id
-                """, (shop_id,))
-                services = cursor.fetchall()
+    cursor.execute("""
+        SELECT service_id, name FROM services
+        WHERE shop_id = %s
+        ORDER BY service_id
+    """, (shop_id,))
+    services = cursor.fetchall()
 
-                cursor.execute("""
-                    SELECT vt.name as vehicle, s.name as service, p.amount
-                    FROM prices p
-                    JOIN vehicle_types vt ON p.vehicle_type_id = vt.vehicle_type_id
-                    JOIN services s ON p.service_id = s.service_id
-                    WHERE vt.shop_id = %s AND s.shop_id = %s
-                    ORDER BY vt.vehicle_type_id, s.service_id
-                """, (shop_id, shop_id))
-                prices = cursor.fetchall()
-                cursor.close()
-                conn.close()
+    cursor.execute("""
+        SELECT vt.name as vehicle, s.name as service, p.amount
+        FROM prices p
+        JOIN vehicle_types vt ON p.vehicle_type_id = vt.vehicle_type_id
+        JOIN services s ON p.service_id = s.service_id
+        WHERE vt.shop_id = %s AND s.shop_id = %s
+        ORDER BY vt.vehicle_type_id, s.service_id
+    """, (shop_id, shop_id))
+    prices = cursor.fetchall()
 
-    return render_template("change_prices.html",
-                           vehicle_types=vehicle_types,
-                           services=services,
-                           prices=prices)
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "change_prices.html",
+        vehicle_types=vehicle_types,
+        services=services,
+        prices=prices
+    )
 
 # ====================== MANAGE TYPES & SERVICES ======================
 @app.route("/manage-types-services", methods=["GET", "POST"])
