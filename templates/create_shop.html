@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Create Shop - OshaSmart{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:600px;">
+    <h2>Create New Shop</h2>
+    <p style="color:#888; margin-bottom:20px;">Add a carwash under OshaSmart.</p>
+
+    <form method="POST">
+        <h3 style="color:#d4af37; font-size:1rem; margin-bottom:12px;">Shop details</h3>
+
+        <div class="form-group">
+            <label>Shop Name</label>
+            <input type="text" name="name" required placeholder="e.g. Extreme Carwash"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Slug (short code, no spaces)</label>
+            <input type="text" name="slug" required placeholder="e.g. extreme"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Phone (optional)</label>
+            <input type="text" name="phone"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Location (optional)</label>
+            <input type="text" name="location" placeholder="e.g. Nairobi"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Plan</label>
+            <select name="plan"
+                    style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+                <option value="basic">Basic</option>
+                <option value="standard" selected>Standard</option>
+                <option value="pro">Pro</option>
+            </select>
+        </div>
+
+        <h3 style="color:#d4af37; font-size:1rem; margin:20px 0 12px;">Shop Admin login</h3>
+
+        <div class="form-group">
+            <label>Admin Full Name</label>
+            <input type="text" name="admin_fullname" required
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Admin Username</label>
+            <input type="text" name="admin_username" required placeholder="e.g. extreme_admin"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Admin Password</label>
+            <input type="text" name="admin_password" required minlength="4"
+                   style="width:100%; padding:12px; background:#111; color:white; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <button type="submit" class="btn">Create Shop</button>
+        <a href="{{ url_for('dashboard') }}" class="btn" style="background:#333; margin-left:10px;">Cancel</a>
+    </form>
+</div>
+{% endblock %}

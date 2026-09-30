@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}OshaSmart Platform{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>OshaSmart Platform</h2>
+    <p style="color:#888; margin-bottom:20px;">Super Admin — manage all carwash shops</p>
+
+    <a href="{{ url_for('create_shop') }}" class="btn" style="margin-bottom:20px;">+ Create Shop</a>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Shop Name</th>
+                    <th>Slug</th>
+                    <th>Plan</th>
+                    <th>Users</th>
+                    <th>Washes</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in shops %}
+                <tr>
+                    <td>{{ s.shop_id }}</td>
+                    <td>{{ s.name }}</td>
+                    <td>{{ s.slug }}</td>
+                    <td>{{ s.plan }}</td>
+                    <td>{{ s.user_count }}</td>
+                    <td>{{ s.wash_count }}</td>
+                    <td>{% if s.is_active %}Active{% else %}Inactive{% endif %}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" style="color:#888;">No shops yet</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

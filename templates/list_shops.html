@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Shops - OshaSmart{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>OshaSmart Shops</h2>
+    <div style="margin-bottom:20px;">
+        <a href="{{ url_for('create_shop') }}" class="btn">+ Create Shop</a>
+    </div>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Slug</th>
+                    <th>Plan</th>
+                    <th>Location</th>
+                    <th>Users</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in shops %}
+                <tr>
+                    <td>{{ s.shop_id }}</td>
+                    <td>{{ s.name }}</td>
+                    <td>{{ s.slug }}</td>
+                    <td>{{ s.plan }}</td>
+                    <td>{{ s.location or '-' }}</td>
+                    <td>{{ s.user_count }}</td>
+                    <td>{% if s.is_active %}Active{% else %}Inactive{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
