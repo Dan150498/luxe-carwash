@@ -9,6 +9,24 @@
 
     {% if washes %}
         <div class="table-responsive">
+            <div class="stats-grid" style="margin-bottom:25px;">
+                <div class="stat-box">
+                    <div class="number">{{ total_cars }}</div>
+                    <div class="label">Cars Today</div>
+                </div>
+                <div class="stat-box">
+                    <div class="number">KSh {{ total_amount }}</div>
+                    <div class="label">Total Amount</div>
+                </div>
+                <div class="stat-box">
+                    <div class="number">KSh {{ total_cash }}</div>
+                    <div class="label">Cash</div>
+                </div>
+                <div class="stat-box">
+                    <div class="number">KSh {{ total_mpesa }}</div>
+                    <div class="label">M-Pesa</div>
+                </div>
+            </div>
             <table style="width:100%; border-collapse:collapse;">
                 <thead>
                     <tr style="background:#111; color:#d4af37;">
