@@ -1081,7 +1081,7 @@ def manage_types_services():
                     cursor.execute("""
                         INSERT INTO vehicle_types (name, shop_id)
                         VALUES (%s, %s)
-                    """, (name, shop_id))
+                    """, (name, current_shop_id()))
                     conn.commit()
                     flash(f"Vehicle type '{name}' added.", "success")
                 except Exception as e:
@@ -2565,10 +2565,10 @@ def sell_product():
                     cursor.execute("""
                         INSERT INTO stock_movements
                         (product_id, movement_type, quantity, selling_price, payment_method,
-                         cash_amount, mpesa_amount, created_by, shop_id)
+                        cash_amount, mpesa_amount, created_by, shop_id)
                         VALUES (%s, 'sale', %s, %s, %s, %s, %s, %s, %s)
                     """, (product_id, quantity, agreed_amount, payment_method,
-                          cash_amount, mpesa_amount, session["user_id"], shop_id))
+                        cash_amount, mpesa_amount, session["user_id"], current_shop_id()))
 
                     conn.commit()
                     flash(f"Sold {quantity} x {product['name']} for KSh {agreed_amount}", "success")
@@ -2665,6 +2665,7 @@ def my_product_sales():
     if "user_id" not in session:
         return redirect(url_for("login"))
 
+    shop_id = current_shop_id()
     today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
     selected_date = request.args.get("date") or today.isoformat()
 
@@ -2672,9 +2673,8 @@ def my_product_sales():
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if session["role"] == "admin":
-        # Admin sees all sales
         cursor.execute("""
-            SELECT 
+            SELECT
                 m.movement_id,
                 m.created_at,
                 p.name as product_name,
@@ -2688,13 +2688,13 @@ def my_product_sales():
             JOIN products p ON m.product_id = p.product_id
             LEFT JOIN users u ON m.created_by = u.user_id
             WHERE m.movement_type = 'sale'
+              AND m.shop_id = %s
               AND m.created_at::date = %s
             ORDER BY m.created_at DESC
-        """, (selected_date,))
+        """, (shop_id, selected_date))
     else:
-        # Cashier / Staff sees only their own sales
         cursor.execute("""
-            SELECT 
+            SELECT
                 m.movement_id,
                 m.created_at,
                 p.name as product_name,
@@ -2706,17 +2706,14 @@ def my_product_sales():
             FROM stock_movements m
             JOIN products p ON m.product_id = p.product_id
             WHERE m.movement_type = 'sale'
+              AND m.shop_id = %s
               AND m.created_by = %s
               AND m.created_at::date = %s
             ORDER BY m.created_at DESC
-        """, (session["user_id"], selected_date))
+        """, (shop_id, session["user_id"], selected_date))
 
     sales = cursor.fetchall()
-    total_sales = sum(s["amount"] * s["quantity"] for s in sales) if sales else 0
-    # Note: selling_price in movements was stored as the agreed total in some versions
-    # Safer total:
-    total_sales = sum((s["amount"] or 0) for s in sales) if sales else 0
-
+    total_sales = sum((s["amount"] or 0) for s in sales)
     cursor.close()
     conn.close()
 
@@ -2727,7 +2724,6 @@ def my_product_sales():
         total_sales=total_sales,
         is_admin=(session["role"] == "admin")
     )
-
 
 #====================BACKUP DATABASE==========================
 
@@ -3292,6 +3288,28 @@ def setup_shop_ids_fix():
 
     conn.close()
     return "<br>".join(messages)
+
+@app.route("/fix-sales-shop-id")
+def fix_sales_shop_id():
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            UPDATE stock_movements
+            SET shop_id = 1
+            WHERE shop_id IS NULL AND movement_type = 'sale'
+        """)
+        conn.commit()
+        msg = f"Updated {cursor.rowcount} sales to Luxe (shop_id=1)"
+    except Exception as e:
+        conn.rollback()
+        msg = str(e)
+    cursor.close()
+    conn.close()
+    return msg
 
 @app.route("/check-shop")
 def check_shop():
