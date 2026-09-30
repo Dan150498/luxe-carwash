@@ -1881,36 +1881,7 @@ def setup_split_payment():
     conn.close()
     return message
 
-@app.route("/check-registration/<reg>")
-def check_registration(reg):
-    if "user_id" not in session:
-        return {"error": "Unauthorized"}, 401
 
-    reg = reg.strip().upper()
-    conn = get_connection()
-    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-    cursor.execute("""
-        SELECT vt.vehicle_type_id, vt.name
-        FROM washes w
-        JOIN vehicle_types vt ON w.vehicle_type_id = vt.vehicle_type_id
-        WHERE w.registration_number = %s
-        ORDER BY w.wash_id ASC
-        LIMIT 1
-    """, (reg,))
-    
-    result = cursor.fetchone()
-    cursor.close()
-    conn.close()
-
-    if result:
-        return {
-            "exists": True,
-            "vehicle_type_id": result["vehicle_type_id"],
-            "vehicle_name": result["name"]
-        }
-    else:
-        return {"exists": False}
 
 @app.route("/setup-staff-login")
 def setup_staff_login():
