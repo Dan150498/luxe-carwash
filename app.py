@@ -264,7 +264,16 @@ def login():
 
             flash(f"Welcome, {user['full_name']}!", "success")
 
-            if user["role"] == "admin":
+            if user["role"] == "superadmin":
+                session["user_id"] = user["user_id"]
+                session["username"] = user["username"]
+                session["full_name"] = user["full_name"]
+                session["role"] = "superadmin"
+                session["shop_id"] = None   # platform level — no single shop
+                session.permanent = True
+                return redirect(url_for("platform_dashboard"))
+
+            elif user["role"] == "admin":
                 return redirect(url_for("dashboard"))
             elif user["role"] == "cashier":
                 return redirect(url_for("cashier_home"))
@@ -3282,8 +3291,94 @@ def inject_shop():
         "platform_name": "OshaSmart"
     }
 
+@app.route("/create-shop", methods=["GET", "POST"])
+def create_shop():
+    if "user_id" not in session or session.get("role") != "superadmin":
+        flash("Only OshaSmart Super Admin can create shops.", "danger")
+        return redirect(url_for("login"))
 
+    # Optional: only Luxe/platform admin should create shops for now
+    # (shop_id 1 = Luxe / first setup account)
+    if session.get("shop_id") not in (1, None):
+        flash("Only the platform admin can create new shops.", "danger")
+        return redirect(url_for("dashboard"))
 
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        slug = request.form.get("slug", "").strip().lower().replace(" ", "-")
+        phone = request.form.get("phone", "").strip()
+        location = request.form.get("location", "").strip()
+        plan = request.form.get("plan", "standard")
+
+        admin_username = request.form.get("admin_username", "").strip().lower()
+        admin_password = request.form.get("admin_password", "").strip()
+        admin_fullname = request.form.get("admin_fullname", "").strip()
+
+        if not name or not slug or not admin_username or not admin_password or not admin_fullname:
+            flash("Shop name, slug, and admin details are required.", "danger")
+        else:
+            conn = get_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            try:
+                # 1. Create shop
+                cursor.execute("""
+                    INSERT INTO shops (name, slug, phone, location, plan, is_active)
+                    VALUES (%s, %s, %s, %s, %s, 1)
+                    RETURNING shop_id
+                """, (name, slug, phone, location, plan))
+                new_shop_id = cursor.fetchone()["shop_id"]
+
+                # 2. Create shop admin user
+                cursor.execute("""
+                    INSERT INTO users (username, password_hash, full_name, role, is_active, shop_id)
+                    VALUES (%s, %s, %s, 'admin', 1, %s)
+                """, (admin_username, hash_password(admin_password), admin_fullname, new_shop_id))
+
+                # 3. Optional: copy vehicle types from Luxe (shop 1) as starter
+                cursor.execute("""
+                    INSERT INTO vehicle_types (name, shop_id)
+                    SELECT name, %s FROM vehicle_types WHERE shop_id = 1
+                """, (new_shop_id,))
+
+                # 4. Optional: copy services from Luxe
+                cursor.execute("""
+                    INSERT INTO services (name, commission_rule, shop_id)
+                    SELECT name, commission_rule, %s FROM services WHERE shop_id = 1
+                """, (new_shop_id,))
+
+                conn.commit()
+                flash(f"Shop '{name}' created (ID {new_shop_id}). Admin login: {admin_username}", "success")
+                cursor.close()
+                conn.close()
+                return redirect(url_for("list_shops"))
+            except Exception as e:
+                conn.rollback()
+                cursor.close()
+                conn.close()
+                flash(f"Error creating shop: {e}", "danger")
+                print(e)
+
+    return render_template("create_shop.html")
+
+@app.route("/shops", methods=["GET", "POST"])
+def list_shops():
+    if "user_id" not in session or session.get("role") != "superadmin":
+        flash("Only OshaSmart Super Admin can can view all shops.", "danger")
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("""
+        SELECT s.*, 
+               (SELECT COUNT(*) FROM users u WHERE u.shop_id = s.shop_id) as user_count
+        FROM shops s
+        ORDER BY s.shop_id
+    """)
+    shops = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return render_template("list_shops.html", shops=shops)
 
 
 
@@ -3330,6 +3425,27 @@ def setup_superadmin():
     cursor.close()
     conn.close()
     return message
+
+@app.route("/platform")
+def platform_dashboard():
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("""
+        SELECT s.*,
+               (SELECT COUNT(*) FROM users u WHERE u.shop_id = s.shop_id) as user_count,
+               (SELECT COUNT(*) FROM washes w WHERE w.shop_id = s.shop_id) as wash_count
+        FROM shops s
+        ORDER BY s.shop_id
+    """)
+    shops = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return render_template("platform_dashboard.html", shops=shops)
 
 
 
