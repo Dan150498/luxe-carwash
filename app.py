@@ -232,14 +232,14 @@ def init_db():
                     VALUES (%s, %s, %s, %s, 1)
                 """, (name, is_pkg, rule, is_adj))
 
-        conn.commit()
-        print("Database initialized successfully!")
-    except Exception as e:
-        conn.rollback()
-        print(f"DB init error: {e}")
-    finally:
-        cursor.close()
-        conn.close()
+            conn.commit()
+            print("Database initialized successfully!")
+        except Exception as e:
+            conn.rollback()
+            print(f"DB init error: {e}")
+        finally:
+            cursor.close()
+            conn.close()
 # ====================== LOGIN ======================
 @app.route("/")
 def home():
