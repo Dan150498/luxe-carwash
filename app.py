@@ -170,51 +170,76 @@ def init_db():
     # Backfill for databases created before this column existed
     cursor.execute("ALTER TABLE wash_services ADD COLUMN IF NOT EXISTS commission_amount INTEGER DEFAULT 0")
 
-    # Insert default admin if not exists
-    cursor.execute("SELECT 1 FROM users WHERE username = %s", ("admin",))
-    if not cursor.fetchone():
-        cursor.execute("""
-            INSERT INTO users (username, password_hash, full_name, role)
-            VALUES (%s, %s, %s, %s)
-        """, ("admin", hash_password("admin123"), "System Administrator", "admin"))
+    # Ensure shop_id columns exist (safe if already added)
+    for table in ("users", "staff", "vehicle_types", "services", "prices", "washes"):
+        try:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS shop_id INTEGER DEFAULT 1")
+        except Exception:
+            pass
 
-        cursor.execute("""
-            INSERT INTO users (username, password_hash, full_name, role)
-            VALUES (%s, %s, %s, %s)
-        """, ("cashier1", hash_password("cashier123"), "Cashier One", "cashier"))
+    # Seed admin only if missing
+        cursor.execute("SELECT 1 FROM users WHERE username = %s", ("admin",))
+        if not cursor.fetchone():
+            cursor.execute("""
+                INSERT INTO users (username, password_hash, full_name, role, shop_id)
+                VALUES (%s, %s, %s, %s, 1)
+            """, ("admin", hash_password("admin123"), "System Administrator", "admin"))
+            cursor.execute("""
+                INSERT INTO users (username, password_hash, full_name, role, shop_id)
+                VALUES (%s, %s, %s, %s, 1)
+            """, ("cashier1", hash_password("cashier123"), "Cashier One", "cashier"))
 
-    # Default vehicle types
-    vehicles = ["Matatu", "5-seater", "7-seater", "31-seater Bus", "51-seater Bus", "Lorry"]
-    for v in vehicles:
-        cursor.execute("INSERT INTO vehicle_types (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (v,))
+        # Default vehicle types for Luxe (shop 1) — NO ON CONFLICT (name)
+        vehicles = ["Matatu", "5-seater", "7-seater", "31-seater Bus", "51-seater Bus", "Lorry"]
+        for v in vehicles:
+            cursor.execute("""
+                SELECT 1 FROM vehicle_types
+                WHERE name = %s AND COALESCE(shop_id, 1) = 1
+            """, (v,))
+            if not cursor.fetchone():
+                cursor.execute(
+                    "INSERT INTO vehicle_types (name, shop_id) VALUES (%s, 1)",
+                    (v,)
+                )
 
-    # Default services: (name, is_package, commission_rule, is_adjustment)
-    # commission_rule: 'standard' = 30%, 'flat100' = flat KSh100, 'full' = 100% (tips)
-    services = [
-        ("General Wash", 0, "standard", 0),
-        ("General + Vacuum", 1, "standard", 0),
-        ("Vacuum", 0, "standard", 0),
-        ("Outside Wash", 0, "standard", 0),
-        ("Underwash", 0, "flat100", 0),
-        ("Engine Steaming", 0, "flat100", 0),
-        ("Carpet Wash", 0, "standard", 0),
-        ("Extra Payment", 0, "standard", 1),
-        ("Staff Tip", 0, "full", 1),
-    ]
-    for name, is_pkg, rule, is_adj in services:
-        cursor.execute("""
-            INSERT INTO services (name, is_package, commission_rule, is_adjustment)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (name) DO UPDATE SET
-                commission_rule = EXCLUDED.commission_rule,
-                is_adjustment = EXCLUDED.is_adjustment
-        """, (name, is_pkg, rule, is_adj))
+        # Default services for Luxe (shop 1) — NO ON CONFLICT (name)
+        services = [
+            ("General Wash", 0, "standard", 0),
+            ("General + Vacuum", 1, "standard", 0),
+            ("Vacuum", 0, "standard", 0),
+            ("Outside Wash", 0, "standard", 0),
+            ("Underwash", 0, "flat100", 0),
+            ("Engine Steaming", 0, "flat100", 0),
+            ("Carpet Wash", 0, "standard", 0),
+            ("Extra Payment", 0, "standard", 1),
+            ("Staff Tip", 0, "full", 1),
+        ]
+        for name, is_pkg, rule, is_adj in services:
+            cursor.execute("""
+                SELECT service_id FROM services
+                WHERE name = %s AND COALESCE(shop_id, 1) = 1
+            """, (name,))
+            row = cursor.fetchone()
+            if row:
+                cursor.execute("""
+                    UPDATE services
+                    SET commission_rule = %s, is_adjustment = %s, is_package = %s
+                    WHERE service_id = %s
+                """, (rule, is_adj, is_pkg, row[0]))
+            else:
+                cursor.execute("""
+                    INSERT INTO services (name, is_package, commission_rule, is_adjustment, shop_id)
+                    VALUES (%s, %s, %s, %s, 1)
+                """, (name, is_pkg, rule, is_adj))
 
-    conn.commit()
-    cursor.close()
-    conn.close()
-    print("Database initialized successfully!")
-
+        conn.commit()
+        print("Database initialized successfully!")
+    except Exception as e:
+        conn.rollback()
+        print(f"DB init error: {e}")
+    finally:
+        cursor.close()
+        conn.close()
 # ====================== LOGIN ======================
 @app.route("/")
 def home():
@@ -748,16 +773,17 @@ def reports():
             conn = get_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute("""
-                SELECT 
+                SELECT
                     s.full_name,
                     COUNT(w.wash_id) as total_washes,
                     SUM(w.total_amount) as total_earned
                 FROM washes w
                 JOIN staff s ON w.staff_id = s.staff_id
                 WHERE w.wash_date BETWEEN %s AND %s
+                  AND w.shop_id = %s
                 GROUP BY s.staff_id, s.full_name
                 ORDER BY total_earned DESC
-            """, (start_date, end_date))
+            """, (start_date, end_date, current_shop_id()))
             
             results = cursor.fetchall()
             grand_total = sum(r["total_earned"] for r in results) if results else 0
@@ -792,9 +818,10 @@ def export_report():
         FROM washes w
         JOIN staff s ON w.staff_id = s.staff_id
         WHERE w.wash_date BETWEEN %s AND %s
+            AND w.shop_id = %s
         GROUP BY s.staff_id, s.full_name
-        ORDER BY SUM(w.total_amount) DESC
-    """
+        ORDER BY SUM(w.total_amount,) DESC
+    """(current_shop_id())
     df = pd.read_sql_query(query, conn, params=(start, end))
     conn.close()
 
@@ -835,9 +862,10 @@ def print_report():
         FROM washes w
         JOIN staff s ON w.staff_id = s.staff_id
         WHERE w.wash_date BETWEEN %s AND %s
+            AND w.shop_id = %s
         GROUP BY s.staff_id, s.full_name
         ORDER BY total_earned DESC
-    """, (start, end))
+    """, (start, end ,current_shop_id()))
     
     results = cursor.fetchall()
     grand_total = sum(r["total_earned"] for r in results) if results else 0
@@ -1021,11 +1049,11 @@ def change_prices():
             try:
                 amount = int(amount)
                 cursor.execute("""
-                    INSERT INTO prices (vehicle_type_id, service_id, amount)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (vehicle_type_id, service_id) 
+                    INSERT INTO prices (vehicle_type_id, service_id, amount, shop_id)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (vehicle_type_id, service_id)
                     DO UPDATE SET amount = EXCLUDED.amount
-                """, (vehicle_type_id, service_id, amount))
+                """, (vehicle_type_id, service_id, amount, shop_id))
                 conn.commit()
                 flash("Price saved successfully!", "success")
             except Exception as e:
@@ -1034,27 +1062,32 @@ def change_prices():
         else:
             flash("All fields are required.", "danger")
 
-    shop_id = current_shop_id()
-    cursor.execute("""
-        SELECT vehicle_type_id, name FROM vehicle_types
-        WHERE shop_id = %s
-        ORDER BY vehicle_type_id
-    """, (shop_id,))
-    vehicle_types = cursor.fetchall()
+            shop_id = current_shop_id()
+                cursor.execute("""
+                    SELECT vehicle_type_id, name FROM vehicle_types
+                    WHERE shop_id = %s
+                    ORDER BY vehicle_type_id
+                """, (shop_id,))
+                vehicle_types = cursor.fetchall()
 
-    cursor.execute("SELECT service_id, name FROM services ORDER BY service_id")
-    services = cursor.fetchall()
+                cursor.execute("""
+                    SELECT service_id, name FROM services
+                    WHERE shop_id = %s
+                    ORDER BY service_id
+                """, (shop_id,))
+                services = cursor.fetchall()
 
-    cursor.execute("""
-        SELECT vt.name as vehicle, s.name as service, p.amount
-        FROM prices p
-        JOIN vehicle_types vt ON p.vehicle_type_id = vt.vehicle_type_id
-        JOIN services s ON p.service_id = s.service_id
-        ORDER BY vt.vehicle_type_id, s.service_id
-    """)
-    prices = cursor.fetchall()
-    cursor.close()
-    conn.close()
+                cursor.execute("""
+                    SELECT vt.name as vehicle, s.name as service, p.amount
+                    FROM prices p
+                    JOIN vehicle_types vt ON p.vehicle_type_id = vt.vehicle_type_id
+                    JOIN services s ON p.service_id = s.service_id
+                    WHERE vt.shop_id = %s AND s.shop_id = %s
+                    ORDER BY vt.vehicle_type_id, s.service_id
+                """, (shop_id, shop_id))
+                prices = cursor.fetchall()
+                cursor.close()
+                conn.close()
 
     return render_template("change_prices.html",
                            vehicle_types=vehicle_types,
@@ -1177,62 +1210,35 @@ def fix_vehicle_type_unique():
     cursor = conn.cursor()
     messages = []
     try:
-        # Find and drop ANY unique constraint that only involves "name"
         cursor.execute("""
-            SELECT conname
-            FROM pg_constraint
-            WHERE conrelid = 'vehicle_types'::regclass
-              AND contype = 'u'
+            SELECT conname FROM pg_constraint
+            WHERE conrelid = 'vehicle_types'::regclass AND contype = 'u'
         """)
         for row in cursor.fetchall():
-            conname = row[0]
-            cursor.execute(f'ALTER TABLE vehicle_types DROP CONSTRAINT IF EXISTS "{conname}"')
-            messages.append(f"Dropped constraint: {conname}")
+            cursor.execute(f'ALTER TABLE vehicle_types DROP CONSTRAINT IF EXISTS "{row[0]}"')
+            messages.append(f"Dropped vehicle_types: {row[0]}")
 
-        # Also try common names
-        for name in ["vehicle_types_name_key", "vehicle_types_name_unique"]:
-            cursor.execute(f'ALTER TABLE vehicle_types DROP CONSTRAINT IF EXISTS "{name}"')
-            messages.append(f"Tried drop: {name}")
-
-        # Ensure shop_id exists
-        cursor.execute("""
-            ALTER TABLE vehicle_types
-            ADD COLUMN IF NOT EXISTS shop_id INTEGER DEFAULT 1
-        """)
-
-        # Per-shop unique only
-        cursor.execute("""
-            ALTER TABLE vehicle_types
-            DROP CONSTRAINT IF EXISTS vehicle_types_shop_name_unique
-        """)
+        cursor.execute("ALTER TABLE vehicle_types ADD COLUMN IF NOT EXISTS shop_id INTEGER DEFAULT 1")
         cursor.execute("""
             ALTER TABLE vehicle_types
             ADD CONSTRAINT vehicle_types_shop_name_unique UNIQUE (shop_id, name)
         """)
-        messages.append("Added UNIQUE (shop_id, name)")
+        messages.append("vehicle_types UNIQUE(shop_id, name) OK")
 
-        # Same for services
         cursor.execute("""
             SELECT conname FROM pg_constraint
             WHERE conrelid = 'services'::regclass AND contype = 'u'
         """)
         for row in cursor.fetchall():
             cursor.execute(f'ALTER TABLE services DROP CONSTRAINT IF EXISTS "{row[0]}"')
-            messages.append(f"Dropped services constraint: {row[0]}")
+            messages.append(f"Dropped services: {row[0]}")
 
-        cursor.execute("""
-            ALTER TABLE services
-            ADD COLUMN IF NOT EXISTS shop_id INTEGER DEFAULT 1
-        """)
-        cursor.execute("""
-            ALTER TABLE services
-            DROP CONSTRAINT IF EXISTS services_shop_name_unique
-        """)
+        cursor.execute("ALTER TABLE services ADD COLUMN IF NOT EXISTS shop_id INTEGER DEFAULT 1")
         cursor.execute("""
             ALTER TABLE services
             ADD CONSTRAINT services_shop_name_unique UNIQUE (shop_id, name)
         """)
-        messages.append("Services UNIQUE (shop_id, name) OK")
+        messages.append("services UNIQUE(shop_id, name) OK")
 
         conn.commit()
         result = "SUCCESS<br>" + "<br>".join(messages)
@@ -1243,6 +1249,29 @@ def fix_vehicle_type_unique():
     conn.close()
     return result
    
+@app.route("/get-services/<int:vehicle_type_id>")
+def get_services(vehicle_type_id):
+    if "user_id" not in session:
+        return {"error": "Unauthorized"}, 401
+
+    shop_id = current_shop_id()
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("""
+        SELECT s.service_id, s.name, p.amount
+        FROM prices p
+        JOIN services s ON p.service_id = s.service_id
+        JOIN vehicle_types vt ON p.vehicle_type_id = vt.vehicle_type_id
+        WHERE p.vehicle_type_id = %s
+          AND s.shop_id = %s
+          AND vt.shop_id = %s
+        ORDER BY s.name
+    """, (vehicle_type_id, shop_id, shop_id))
+    data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return list(data)
+
 
 # ====================== INITIALIZE DB ON STARTUP ======================
 @app.before_request
