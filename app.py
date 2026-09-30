@@ -1166,6 +1166,82 @@ def add_service():
 
     return redirect(url_for("manage_types_services"))
 
+@app.route("/fix-vehicle-type-unique")
+def fix_vehicle_type_unique():
+    token = request.args.get("token")
+    if token != "oshasmart-setup-2026":
+        if "user_id" not in session or session.get("role") != "superadmin":
+            return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    messages = []
+    try:
+        # Find and drop ANY unique constraint that only involves "name"
+        cursor.execute("""
+            SELECT conname
+            FROM pg_constraint
+            WHERE conrelid = 'vehicle_types'::regclass
+              AND contype = 'u'
+        """)
+        for row in cursor.fetchall():
+            conname = row[0]
+            cursor.execute(f'ALTER TABLE vehicle_types DROP CONSTRAINT IF EXISTS "{conname}"')
+            messages.append(f"Dropped constraint: {conname}")
+
+        # Also try common names
+        for name in ["vehicle_types_name_key", "vehicle_types_name_unique"]:
+            cursor.execute(f'ALTER TABLE vehicle_types DROP CONSTRAINT IF EXISTS "{name}"')
+            messages.append(f"Tried drop: {name}")
+
+        # Ensure shop_id exists
+        cursor.execute("""
+            ALTER TABLE vehicle_types
+            ADD COLUMN IF NOT EXISTS shop_id INTEGER DEFAULT 1
+        """)
+
+        # Per-shop unique only
+        cursor.execute("""
+            ALTER TABLE vehicle_types
+            DROP CONSTRAINT IF EXISTS vehicle_types_shop_name_unique
+        """)
+        cursor.execute("""
+            ALTER TABLE vehicle_types
+            ADD CONSTRAINT vehicle_types_shop_name_unique UNIQUE (shop_id, name)
+        """)
+        messages.append("Added UNIQUE (shop_id, name)")
+
+        # Same for services
+        cursor.execute("""
+            SELECT conname FROM pg_constraint
+            WHERE conrelid = 'services'::regclass AND contype = 'u'
+        """)
+        for row in cursor.fetchall():
+            cursor.execute(f'ALTER TABLE services DROP CONSTRAINT IF EXISTS "{row[0]}"')
+            messages.append(f"Dropped services constraint: {row[0]}")
+
+        cursor.execute("""
+            ALTER TABLE services
+            ADD COLUMN IF NOT EXISTS shop_id INTEGER DEFAULT 1
+        """)
+        cursor.execute("""
+            ALTER TABLE services
+            DROP CONSTRAINT IF EXISTS services_shop_name_unique
+        """)
+        cursor.execute("""
+            ALTER TABLE services
+            ADD CONSTRAINT services_shop_name_unique UNIQUE (shop_id, name)
+        """)
+        messages.append("Services UNIQUE (shop_id, name) OK")
+
+        conn.commit()
+        result = "SUCCESS<br>" + "<br>".join(messages)
+    except Exception as e:
+        conn.rollback()
+        result = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return result
    
 
 # ====================== INITIALIZE DB ON STARTUP ======================
