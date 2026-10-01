@@ -5,7 +5,22 @@
 {% block content %}
 <div class="card">
     <h2>OshaSmart Platform</h2>
-    <p style="color:#888; margin-bottom:20px;">Super Admin — manage all carwash shops</p>
+    <p style="color:#888;">{{ today }} · Super Admin overview</p>
+
+    <div class="stats-grid" style="margin:20px 0;">
+        <div class="stat-box">
+            <div class="number">{{ active_shops }}</div>
+            <div class="label">Active Shops</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">{{ platform_washes }}</div>
+            <div class="label">Washes Today</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">KSh {{ platform_total }}</div>
+            <div class="label">Platform Total Today</div>
+        </div>
+    </div>
 
     <a href="{{ url_for('create_shop') }}" class="btn" style="margin-bottom:20px;">+ Create Shop</a>
 
@@ -14,27 +29,59 @@
             <thead>
                 <tr>
                     <th>ID</th>
-                    <th>Shop Name</th>
-                    <th>Slug</th>
+                    <th>Shop</th>
                     <th>Plan</th>
                     <th>Users</th>
-                    <th>Washes</th>
+                    <th>Staff</th>
+                    <th>Washes Today</th>
+                    <th>Wash Revenue</th>
+                    <th>Product Sales</th>
+                    <th>Today Total</th>
                     <th>Status</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for s in shops %}
-                <tr>
+                <tr style="{% if not s.is_active %}opacity:0.5;{% endif %}">
                     <td>{{ s.shop_id }}</td>
-                    <td>{{ s.name }}</td>
-                    <td>{{ s.slug }}</td>
+                    <td>
+                        <strong>{{ s.name }}</strong><br>
+                        <small style="color:#888;">{{ s.slug }} · {{ s.location or '-' }}</small>
+                    </td>
                     <td>{{ s.plan }}</td>
                     <td>{{ s.user_count }}</td>
-                    <td>{{ s.wash_count }}</td>
-                    <td>{% if s.is_active %}Active{% else %}Inactive{% endif %}</td>
+                    <td>{{ s.staff_count }}</td>
+                    <td>{{ s.today_washes }}</td>
+                    <td>KSh {{ s.today_revenue }}</td>
+                    <td>KSh {{ s.today_product_sales }}</td>
+                    <td><strong>KSh {{ s.today_total }}</strong></td>
+                    <td>
+                        {% if s.is_active %}
+                            <span style="color:#4caf50;">Active</span>
+                        {% else %}
+                            <span style="color:#f44336;">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if s.is_active %}
+                            <a href="{{ url_for('deactivate_shop', shop_id=s.shop_id) }}"
+                               onclick="return confirm('Deactivate {{ s.name }}? Users will not be able to log in.')"
+                               style="color:#ff9800;">Deactivate</a>
+                        {% else %}
+                            <a href="{{ url_for('activate_shop', shop_id=s.shop_id) }}"
+                               style="color:#4caf50;">Activate</a>
+                        {% endif %}
+                        {% if s.shop_id != 1 %}
+                            ·
+                            <a href="{{ url_for('delete_shop', shop_id=s.shop_id) }}"
+                               onclick="return confirm('DELETE {{ s.name }} and all its data? This cannot be undone.')"
+                               style="color:#f44336;">Delete</a>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="7" style="color:#888;">No shops yet</td></tr>
+                <tr><td colspan="11" style="color:#888;">No shops yet</td></tr>
                 {% endfor %}
             </tbody>
         </table>
