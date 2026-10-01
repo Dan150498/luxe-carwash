@@ -275,6 +275,17 @@ def login():
             session["shop_id"] = user.get("shop_id") or 1   # Luxe default
             session.permanent = True
 
+            if user and user.get("shop_id"):
+                        conn2 = get_connection()
+                        cur2 = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                        cur2.execute("SELECT is_active FROM shops WHERE shop_id = %s", (user["shop_id"],))
+                        shop = cur2.fetchone()
+                        cur2.close()
+                        conn2.close()
+                        if shop and not shop["is_active"]:
+                            flash("This shop is currently inactive. Contact OshaSmart support.", "danger")
+                            return render_template("login.html")
+
             if user.get("staff_id"):
                 session["staff_id"] = user["staff_id"]
 
@@ -1655,6 +1666,7 @@ def staff_performance():
         start_date=start_date,
         end_date=end_date
     )
+
 @app.route("/setup-payments")
 def setup_payments():
     if "user_id" not in session or session["role"] != "admin":
@@ -3518,7 +3530,86 @@ def cleanup_shop_2():
     conn.close()
     return msg
 
+@app.route("/platform/deactivate-shop/<int:shop_id>")
+def deactivate_shop(shop_id):
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return redirect(url_for("login"))
 
+    if shop_id == 1:
+        flash("Cannot deactivate the primary shop (Luxe).", "danger")
+        return redirect(url_for("platform_dashboard"))
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE shops SET is_active = 0 WHERE shop_id = %s", (shop_id,))
+        # Block shop users from logging in
+        cursor.execute("UPDATE users SET is_active = 0 WHERE shop_id = %s AND role != 'superadmin'", (shop_id,))
+        conn.commit()
+        flash("Shop deactivated. Users from this shop cannot log in.", "success")
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error: {e}", "danger")
+    cursor.close()
+    conn.close()
+    return redirect(url_for("platform_dashboard"))
+
+
+@app.route("/platform/activate-shop/<int:shop_id>")
+def activate_shop(shop_id):
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE shops SET is_active = 1 WHERE shop_id = %s", (shop_id,))
+        cursor.execute("UPDATE users SET is_active = 1 WHERE shop_id = %s", (shop_id,))
+        conn.commit()
+        flash("Shop activated again.", "success")
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error: {e}", "danger")
+    cursor.close()
+    conn.close()
+    return redirect(url_for("platform_dashboard"))
+
+
+@app.route("/platform/delete-shop/<int:shop_id>")
+def delete_shop(shop_id):
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return redirect(url_for("login"))
+
+    if shop_id == 1:
+        flash("Cannot delete the primary shop (Luxe).", "danger")
+        return redirect(url_for("platform_dashboard"))
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        # Delete dependent data first (order matters)
+        cursor.execute("DELETE FROM wash_services WHERE wash_id IN (SELECT wash_id FROM washes WHERE shop_id = %s)", (shop_id,))
+        cursor.execute("DELETE FROM washes WHERE shop_id = %s", (shop_id,))
+        cursor.execute("DELETE FROM stock_movements WHERE shop_id = %s", (shop_id,))
+        cursor.execute("DELETE FROM products WHERE shop_id = %s", (shop_id,))
+        cursor.execute("DELETE FROM prices WHERE shop_id = %s", (shop_id,))
+        cursor.execute("DELETE FROM services WHERE shop_id = %s", (shop_id,))
+        cursor.execute("DELETE FROM vehicle_types WHERE shop_id = %s", (shop_id,))
+        cursor.execute("DELETE FROM staff_advances WHERE shop_id = %s", (shop_id,))
+        cursor.execute("DELETE FROM commission_payments WHERE shop_id = %s", (shop_id,))
+        cursor.execute("DELETE FROM staff WHERE shop_id = %s", (shop_id,))
+        cursor.execute("DELETE FROM users WHERE shop_id = %s", (shop_id,))
+        cursor.execute("DELETE FROM product_categories WHERE shop_id = %s", (shop_id,))
+        cursor.execute("DELETE FROM shops WHERE shop_id = %s", (shop_id,))
+        conn.commit()
+        flash("Shop and all its data deleted permanently.", "success")
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error deleting shop: {e}", "danger")
+        print(e)
+    cursor.close()
+    conn.close()
+    return redirect(url_for("platform_dashboard"))
 
 
 #==============================================superadmin=====================================================
@@ -3566,21 +3657,63 @@ def platform_dashboard():
     if "user_id" not in session or session.get("role") != "superadmin":
         return redirect(url_for("login"))
 
+    today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cursor.execute("""
-        SELECT s.*,
-               (SELECT COUNT(*) FROM users u WHERE u.shop_id = s.shop_id) as user_count,
-               (SELECT COUNT(*) FROM washes w WHERE w.shop_id = s.shop_id) as wash_count
+        SELECT
+            s.shop_id,
+            s.name,
+            s.slug,
+            s.plan,
+            s.location,
+            s.is_active,
+            (SELECT COUNT(*) FROM users u WHERE u.shop_id = s.shop_id) as user_count,
+            (SELECT COUNT(*) FROM staff st WHERE st.shop_id = s.shop_id AND st.is_active = 1) as staff_count,
+            COALESCE((
+                SELECT COUNT(*) FROM washes w
+                WHERE w.shop_id = s.shop_id
+                  AND w.wash_date = %s
+                  AND (w.status = 'completed' OR w.status IS NULL)
+            ), 0) as today_washes,
+            COALESCE((
+                SELECT SUM(w.total_amount) FROM washes w
+                WHERE w.shop_id = s.shop_id
+                  AND w.wash_date = %s
+                  AND (w.status = 'completed' OR w.status IS NULL)
+            ), 0) as today_revenue,
+            COALESCE((
+                SELECT SUM(m.selling_price) FROM stock_movements m
+                WHERE m.shop_id = s.shop_id
+                  AND m.movement_type = 'sale'
+                  AND m.created_at::date = %s
+            ), 0) as today_product_sales
         FROM shops s
         ORDER BY s.shop_id
-    """)
+    """, (today, today, today))
+
     shops = cursor.fetchall()
+
+    for shop in shops:
+        shop["today_total"] = (shop["today_revenue"] or 0) + (shop["today_product_sales"] or 0)
+
+    platform_total = sum(s["today_total"] for s in shops)
+    platform_washes = sum(s["today_washes"] for s in shops)
+    active_shops = sum(1 for s in shops if s["is_active"])
+
     cursor.close()
     conn.close()
 
-    return render_template("platform_dashboard.html", shops=shops)
+    return render_template(
+        "platform_dashboard.html",
+        shops=shops,
+        today=today,
+        platform_total=platform_total,
+        platform_washes=platform_washes,
+        active_shops=active_shops
+    )
 
 
 
