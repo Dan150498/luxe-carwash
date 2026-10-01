@@ -788,19 +788,19 @@ def export_report():
         return redirect(url_for("reports"))
 
     conn = get_connection()
-        query = """
-                SELECT
-                    s.full_name as "Staff Name",
-                    COUNT(w.wash_id) as "Total Washes",
-                    SUM(w.total_amount) as "Total Earned (KSh)"
-                FROM washes w
-                JOIN staff s ON w.staff_id = s.staff_id
-                WHERE w.wash_date BETWEEN %s AND %s
-                AND w.shop_id = %s
-                GROUP BY s.staff_id, s.full_name
-                ORDER BY SUM(w.total_amount) DESC
-            """
-            df = pd.read_sql_query(query, conn, params=(start, end, current_shop_id()))
+    query = """
+        SELECT
+            s.full_name as "Staff Name",
+            COUNT(w.wash_id) as "Total Washes",
+            SUM(w.total_amount) as "Total Earned (KSh)"
+        FROM washes w
+        JOIN staff s ON w.staff_id = s.staff_id
+        WHERE w.wash_date BETWEEN %s AND %s
+          AND w.shop_id = %s
+        GROUP BY s.staff_id, s.full_name
+        ORDER BY SUM(w.total_amount) DESC
+    """
+    df = pd.read_sql_query(query, conn, params=(start, end, current_shop_id()))
     conn.close()
 
     if fmt == "csv":
@@ -815,8 +815,12 @@ def export_report():
             df.to_excel(writer, index=False, sheet_name="Staff Earnings")
         output.seek(0)
         filename = f"Luxe_Report_{start}_to_{end}.xlsx"
-        return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                         as_attachment=True, download_name=filename)
+        return send_file(
+            output,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=filename
+        )
 
 @app.route("/print-report")
 def print_report():
@@ -1148,11 +1152,15 @@ def add_vehicle_type():
         conn = get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("INSERT INTO vehicle_types (name) VALUES (%s)", (name,))
+            cursor.execute("INSERT INTO vehicle_types (name, shop_id) VALUES (%s, %s)", (name, current_shop_id()))
             conn.commit()
             flash(f"Vehicle type '{name}' added successfully!", "success")
         except Exception as e:
-            flash(f"Error: {e}", "danger")
+            conn.rollback()
+            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                flash(f"'{name}' already exists for your shop.", "danger")
+            else:
+                flash(f"Error: {e}", "danger")
         cursor.close()
         conn.close()
     else:
@@ -1170,11 +1178,15 @@ def add_service():
         conn = get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("INSERT INTO services (name, is_package) VALUES (%s, 0)", (name,))
+            cursor.execute("INSERT INTO services (name, is_package, shop_id) VALUES (%s, 0, %s)", (name, current_shop_id()))
             conn.commit()
             flash(f"Service '{name}' added successfully!", "success")
         except Exception as e:
-            flash(f"Error: {e}", "danger")
+            conn.rollback()
+            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                flash(f"'{name}' already exists for your shop.", "danger")
+            else:
+                flash(f"Error: {e}", "danger")
         cursor.close()
         conn.close()
     else:
