@@ -64,20 +64,20 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if s.is_active %}
-                            <a href="{{ url_for('deactivate_shop', shop_id=s.shop_id) }}"
-                               onclick="return confirm('Deactivate {{ s.name }}? Users will not be able to log in.')"
-                               style="color:#ff9800;">Deactivate</a>
-                        {% else %}
-                            <a href="{{ url_for('activate_shop', shop_id=s.shop_id) }}"
-                               style="color:#4caf50;">Activate</a>
-                        {% endif %}
-                        {% if s.shop_id != 1 %}
-                            ·
-                            <a href="{{ url_for('delete_shop', shop_id=s.shop_id) }}"
-                               onclick="return confirm('DELETE {{ s.name }} and all its data? This cannot be undone.')"
-                               style="color:#f44336;">Delete</a>
-                        {% endif %}
+                    <a href="{{ url_for('platform_shop_detail', shop_id=s.shop_id) }}">Details</a> ·
+                    <a href="{{ url_for('edit_shop', shop_id=s.shop_id) }}">Edit</a> ·
+                    <a href="{{ url_for('reset_shop_admin_password', shop_id=s.shop_id) }}">Reset PW</a> ·
+                    <a href="{{ url_for('enter_shop', shop_id=s.shop_id) }}">Enter</a> ·
+                    {% if s.is_active %}
+                        <a href="{{ url_for('deactivate_shop', shop_id=s.shop_id) }}"
+                        onclick="return confirm('Deactivate?')">Off</a>
+                    {% else %}
+                        <a href="{{ url_for('activate_shop', shop_id=s.shop_id) }}">On</a>
+                    {% endif %}
+                    {% if s.shop_id != 1 %}
+                        · <a href="{{ url_for('delete_shop', shop_id=s.shop_id) }}"
+                            onclick="return confirm('DELETE permanently?')" style="color:#f44336;">Delete</a>
+                    {% endif %}
                     </td>
                 </tr>
                 {% else %}
