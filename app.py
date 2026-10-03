@@ -3052,6 +3052,10 @@ def restore_backup():
 def setup_advances():
     if "user_id" not in session or session["role"] != "admin":
         return "Unauthorized", 403
+    shop_id = current_shop_id()
+    if not shop_has_feature(shop_id, "advance"):
+        flash("Advance service is not enabled for this shop.", "danger")
+        return redirect(url_for("dashboard"))
 
     conn = get_connection()
     cursor = conn.cursor()
