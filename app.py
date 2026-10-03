@@ -3715,6 +3715,59 @@ def platform_dashboard():
         active_shops=active_shops
     )
 
+@app.route("/setup-platform-tools")
+def setup_platform_tools():
+    token = request.args.get("token")
+    if token != "oshasmart-setup-2026":
+        if "user_id" not in session or session.get("role") != "superadmin":
+            return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    messages = []
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shop_features (
+                id SERIAL PRIMARY KEY,
+                shop_id INTEGER REFERENCES shops(shop_id) ON DELETE CASCADE,
+                feature_name TEXT NOT NULL,
+                is_enabled INTEGER DEFAULT 1,
+                UNIQUE(shop_id, feature_name)
+            )
+        """)
+        messages.append("shop_features OK")
+
+        cursor.execute("ALTER TABLE shops ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'standard'")
+        cursor.execute("ALTER TABLE shops ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'active'")
+        cursor.execute("ALTER TABLE shops ADD COLUMN IF NOT EXISTS notes TEXT")
+        messages.append("shops extra columns OK")
+
+        # Default features for every existing shop
+        features = [
+            "inventory_management",
+            "staff_commissions",
+            "staff_advances",
+            "product_sales",
+            "pending_wash"
+        ]
+        cursor.execute("SELECT shop_id FROM shops")
+        for (sid,) in cursor.fetchall():
+            for f in features:
+                cursor.execute("""
+                    INSERT INTO shop_features (shop_id, feature_name, is_enabled)
+                    VALUES (%s, %s, 1)
+                    ON CONFLICT (shop_id, feature_name) DO NOTHING
+                """, (sid, f))
+        messages.append("default features seeded")
+
+        conn.commit()
+        result = "SUCCESS<br>" + "<br>".join(messages)
+    except Exception as e:
+        conn.rollback()
+        result = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return result
 
 
 
