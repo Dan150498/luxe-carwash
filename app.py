@@ -2420,8 +2420,14 @@ def inventory_products():
         return redirect(url_for("login"))
 
     shop_id = current_shop_id()
+        if not shop_has_feature(shop_id, "inventory_management"):
+            flash("Inventory is not enabled for this shop.", "danger")
+            return redirect(url_for("dashboard"))
+
+    shop_id = current_shop_id()
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
 
     if request.method == "POST":
         action = request.form.get("action")
@@ -2626,6 +2632,7 @@ def sell_product():
     conn.close()
 
     return render_template("sell_product.html", products=products)
+
 @app.route("/inventory/report")
 def inventory_report():
     if "user_id" not in session or session["role"] != "admin":
@@ -3534,19 +3541,17 @@ def cleanup_shop_2():
 def deactivate_shop(shop_id):
     if "user_id" not in session or session.get("role") != "superadmin":
         return redirect(url_for("login"))
-
     if shop_id == 1:
-        flash("Cannot deactivate the primary shop (Luxe).", "danger")
+        flash("Cannot deactivate primary shop (Luxe).", "danger")
         return redirect(url_for("platform_dashboard"))
 
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("UPDATE shops SET is_active = 0 WHERE shop_id = %s", (shop_id,))
-        # Block shop users from logging in
-        cursor.execute("UPDATE users SET is_active = 0 WHERE shop_id = %s AND role != 'superadmin'", (shop_id,))
+        cursor.execute("UPDATE users SET is_active = 0 WHERE shop_id = %s", (shop_id,))
         conn.commit()
-        flash("Shop deactivated. Users from this shop cannot log in.", "success")
+        flash("Shop deactivated.", "success")
     except Exception as e:
         conn.rollback()
         flash(f"Error: {e}", "danger")
@@ -3566,7 +3571,7 @@ def activate_shop(shop_id):
         cursor.execute("UPDATE shops SET is_active = 1 WHERE shop_id = %s", (shop_id,))
         cursor.execute("UPDATE users SET is_active = 1 WHERE shop_id = %s", (shop_id,))
         conn.commit()
-        flash("Shop activated again.", "success")
+        flash("Shop activated.", "success")
     except Exception as e:
         conn.rollback()
         flash(f"Error: {e}", "danger")
@@ -3579,15 +3584,13 @@ def activate_shop(shop_id):
 def delete_shop(shop_id):
     if "user_id" not in session or session.get("role") != "superadmin":
         return redirect(url_for("login"))
-
     if shop_id == 1:
-        flash("Cannot delete the primary shop (Luxe).", "danger")
+        flash("Cannot delete primary shop (Luxe).", "danger")
         return redirect(url_for("platform_dashboard"))
 
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        # Delete dependent data first (order matters)
         cursor.execute("DELETE FROM wash_services WHERE wash_id IN (SELECT wash_id FROM washes WHERE shop_id = %s)", (shop_id,))
         cursor.execute("DELETE FROM washes WHERE shop_id = %s", (shop_id,))
         cursor.execute("DELETE FROM stock_movements WHERE shop_id = %s", (shop_id,))
@@ -3597,20 +3600,192 @@ def delete_shop(shop_id):
         cursor.execute("DELETE FROM vehicle_types WHERE shop_id = %s", (shop_id,))
         cursor.execute("DELETE FROM staff_advances WHERE shop_id = %s", (shop_id,))
         cursor.execute("DELETE FROM commission_payments WHERE shop_id = %s", (shop_id,))
+        cursor.execute("DELETE FROM shop_features WHERE shop_id = %s", (shop_id,))
         cursor.execute("DELETE FROM staff WHERE shop_id = %s", (shop_id,))
         cursor.execute("DELETE FROM users WHERE shop_id = %s", (shop_id,))
         cursor.execute("DELETE FROM product_categories WHERE shop_id = %s", (shop_id,))
         cursor.execute("DELETE FROM shops WHERE shop_id = %s", (shop_id,))
         conn.commit()
-        flash("Shop and all its data deleted permanently.", "success")
+        flash("Shop deleted permanently.", "success")
     except Exception as e:
         conn.rollback()
-        flash(f"Error deleting shop: {e}", "danger")
-        print(e)
+        flash(f"Error: {e}", "danger")
     cursor.close()
     conn.close()
     return redirect(url_for("platform_dashboard"))
 
+@app.route("/platform/shop/<int:shop_id>")
+def platform_shop_detail(shop_id):
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("SELECT * FROM shops WHERE shop_id = %s", (shop_id,))
+    shop = cursor.fetchone()
+    if not shop:
+        cursor.close()
+        conn.close()
+        flash("Shop not found.", "danger")
+        return redirect(url_for("platform_dashboard"))
+
+    cursor.execute("""
+        SELECT user_id, username, full_name, role, is_active, created_at
+        FROM users WHERE shop_id = %s
+        ORDER BY role, full_name
+    """, (shop_id,))
+    users = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT feature_name, is_enabled FROM shop_features
+        WHERE shop_id = %s ORDER BY feature_name
+    """, (shop_id,))
+    features = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return render_template(
+        "platform_shop_detail.html",
+        shop=shop,
+        users=users,
+        features=features
+    )
+
+
+@app.route("/platform/shop/<int:shop_id>/edit", methods=["GET", "POST"])
+def edit_shop(shop_id):
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("SELECT * FROM shops WHERE shop_id = %s", (shop_id,))
+    shop = cursor.fetchone()
+    if not shop:
+        cursor.close()
+        conn.close()
+        flash("Shop not found.", "danger")
+        return redirect(url_for("platform_dashboard"))
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        phone = request.form.get("phone", "").strip()
+        location = request.form.get("location", "").strip()
+        plan = request.form.get("plan", "standard")
+        subscription_status = request.form.get("subscription_status", "active")
+        notes = request.form.get("notes", "").strip()
+
+        cursor.execute("""
+            UPDATE shops
+            SET name = %s, phone = %s, location = %s, plan = %s,
+                subscription_status = %s, notes = %s
+            WHERE shop_id = %s
+        """, (name, phone, location, plan, subscription_status, notes, shop_id))
+        conn.commit()
+        flash("Shop updated.", "success")
+        cursor.close()
+        conn.close()
+        return redirect(url_for("platform_shop_detail", shop_id=shop_id))
+
+    cursor.close()
+    conn.close()
+    return render_template("edit_shop.html", shop=shop)
+
+
+@app.route("/platform/shop/<int:shop_id>/features", methods=["POST"])
+def update_shop_features(shop_id):
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT feature_name FROM shop_features WHERE shop_id = %s", (shop_id,))
+    all_features = [r[0] for r in cursor.fetchall()]
+
+    for fname in all_features:
+        enabled = 1 if request.form.get(f"feature_{fname}") else 0
+        cursor.execute("""
+            UPDATE shop_features SET is_enabled = %s
+            WHERE shop_id = %s AND feature_name = %s
+        """, (enabled, shop_id, fname))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+    flash("Features updated.", "success")
+    return redirect(url_for("platform_shop_detail", shop_id=shop_id))
+
+@app.route("/platform/enter-shop/<int:shop_id>")
+def enter_shop(shop_id):
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("SELECT * FROM shops WHERE shop_id = %s AND is_active = 1", (shop_id,))
+    shop = cursor.fetchone()
+    if not shop:
+        cursor.close()
+        conn.close()
+        flash("Shop not found or inactive.", "danger")
+        return redirect(url_for("platform_dashboard"))
+
+    cursor.execute("""
+        SELECT user_id, username, full_name FROM users
+        WHERE shop_id = %s AND role = 'admin' AND is_active = 1
+        ORDER BY user_id LIMIT 1
+    """, (shop_id,))
+    admin = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not admin:
+        flash("This shop has no active admin user.", "danger")
+        return redirect(url_for("platform_dashboard"))
+
+    # Save superadmin identity so we can return
+    session["impersonator_id"] = session["user_id"]
+    session["impersonator_name"] = session.get("full_name")
+    session["user_id"] = admin["user_id"]
+    session["username"] = admin["username"]
+    session["full_name"] = admin["full_name"] + " (Support)"
+    session["role"] = "admin"
+    session["shop_id"] = shop_id
+
+    flash(f"Entered {shop['name']} as support. Use Exit Shop to return.", "info")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/platform/exit-shop")
+def exit_shop():
+    if not session.get("impersonator_id"):
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("""
+        SELECT user_id, username, full_name, role
+        FROM users WHERE user_id = %s
+    """, (session["impersonator_id"],))
+    sa = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not sa:
+        session.clear()
+        return redirect(url_for("login"))
+
+    session.clear()
+    session["user_id"] = sa["user_id"]
+    session["username"] = sa["username"]
+    session["full_name"] = sa["full_name"]
+    session["role"] = "superadmin"
+    session["shop_id"] = None
+    session.permanent = True
+
+    flash("Returned to OshaSmart platform.", "success")
+    return redirect(url_for("platform_dashboard"))
 
 #==============================================superadmin=====================================================
 @app.route("/setup-superadmin")
@@ -3658,48 +3833,55 @@ def platform_dashboard():
         return redirect(url_for("login"))
 
     today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=6)
 
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cursor.execute("""
         SELECT
-            s.shop_id,
-            s.name,
-            s.slug,
-            s.plan,
-            s.location,
-            s.is_active,
+            s.shop_id, s.name, s.slug, s.plan, s.location, s.is_active,
+            COALESCE(s.subscription_status, 'active') as subscription_status,
             (SELECT COUNT(*) FROM users u WHERE u.shop_id = s.shop_id) as user_count,
             (SELECT COUNT(*) FROM staff st WHERE st.shop_id = s.shop_id AND st.is_active = 1) as staff_count,
             COALESCE((
                 SELECT COUNT(*) FROM washes w
-                WHERE w.shop_id = s.shop_id
-                  AND w.wash_date = %s
+                WHERE w.shop_id = s.shop_id AND w.wash_date = %s
                   AND (w.status = 'completed' OR w.status IS NULL)
             ), 0) as today_washes,
             COALESCE((
                 SELECT SUM(w.total_amount) FROM washes w
-                WHERE w.shop_id = s.shop_id
-                  AND w.wash_date = %s
+                WHERE w.shop_id = s.shop_id AND w.wash_date = %s
                   AND (w.status = 'completed' OR w.status IS NULL)
-            ), 0) as today_revenue,
+            ), 0) as today_wash_revenue,
             COALESCE((
                 SELECT SUM(m.selling_price) FROM stock_movements m
-                WHERE m.shop_id = s.shop_id
-                  AND m.movement_type = 'sale'
+                WHERE m.shop_id = s.shop_id AND m.movement_type = 'sale'
                   AND m.created_at::date = %s
-            ), 0) as today_product_sales
+            ), 0) as today_product_sales,
+            COALESCE((
+                SELECT SUM(w.total_amount) FROM washes w
+                WHERE w.shop_id = s.shop_id
+                  AND w.wash_date BETWEEN %s AND %s
+                  AND (w.status = 'completed' OR w.status IS NULL)
+            ), 0) as week_wash_revenue,
+            COALESCE((
+                SELECT SUM(m.selling_price) FROM stock_movements m
+                WHERE m.shop_id = s.shop_id AND m.movement_type = 'sale'
+                  AND m.created_at::date BETWEEN %s AND %s
+            ), 0) as week_product_sales
         FROM shops s
         ORDER BY s.shop_id
-    """, (today, today, today))
+    """, (today, today, today, week_start, week_end, week_start, week_end))
 
     shops = cursor.fetchall()
+    for s in shops:
+        s["today_total"] = (s["today_wash_revenue"] or 0) + (s["today_product_sales"] or 0)
+        s["week_total"] = (s["week_wash_revenue"] or 0) + (s["week_product_sales"] or 0)
 
-    for shop in shops:
-        shop["today_total"] = (shop["today_revenue"] or 0) + (shop["today_product_sales"] or 0)
-
-    platform_total = sum(s["today_total"] for s in shops)
+    platform_today = sum(s["today_total"] for s in shops)
+    platform_week = sum(s["week_total"] for s in shops)
     platform_washes = sum(s["today_washes"] for s in shops)
     active_shops = sum(1 for s in shops if s["is_active"])
 
@@ -3710,7 +3892,10 @@ def platform_dashboard():
         "platform_dashboard.html",
         shops=shops,
         today=today,
-        platform_total=platform_total,
+        week_start=week_start,
+        week_end=week_end,
+        platform_today=platform_today,
+        platform_week=platform_week,
         platform_washes=platform_washes,
         active_shops=active_shops
     )
@@ -3769,6 +3954,50 @@ def setup_platform_tools():
     conn.close()
     return result
 
+@app.route("/platform/reset-password/<int:shop_id>", methods=["GET", "POST"])
+def reset_shop_admin_password(shop_id):
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("SELECT shop_id, name FROM shops WHERE shop_id = %s", (shop_id,))
+    shop = cursor.fetchone()
+    if not shop:
+        cursor.close()
+        conn.close()
+        flash("Shop not found.", "danger")
+        return redirect(url_for("platform_dashboard"))
+
+    cursor.execute("""
+        SELECT user_id, username, full_name
+        FROM users
+        WHERE shop_id = %s AND role = 'admin'
+        ORDER BY user_id
+    """, (shop_id,))
+    admins = cursor.fetchall()
+
+    if request.method == "POST":
+        user_id = request.form.get("user_id")
+        new_password = request.form.get("new_password", "").strip()
+        if not user_id or len(new_password) < 6:
+            flash("Select an admin and use a password of at least 6 characters.", "danger")
+        else:
+            cursor.execute("""
+                UPDATE users
+                SET password_hash = %s, must_change_password = 1
+                WHERE user_id = %s AND shop_id = %s
+            """, (hash_password(new_password), user_id, shop_id))
+            conn.commit()
+            flash("Password reset. Admin must change it on next login.", "success")
+            cursor.close()
+            conn.close()
+            return redirect(url_for("platform_dashboard"))
+
+    cursor.close()
+    conn.close()
+    return render_template("reset_shop_password.html", shop=shop, admins=admins)
 
 
 if __name__ == "__main__":
