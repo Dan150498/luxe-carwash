@@ -3053,7 +3053,7 @@ def setup_advances():
     if "user_id" not in session or session["role"] != "admin":
         return "Unauthorized", 403
     shop_id = current_shop_id()
-    if not shop_has_feature(shop_id, "advance"):
+    if not shop_has_feature(shop_id, "staff_advances"):
         flash("Advance service is not enabled for this shop.", "danger")
         return redirect(url_for("dashboard"))
 
@@ -3086,8 +3086,8 @@ def staff_advances():
         return redirect(url_for("login"))
 
     shop_id = current_shop_id()
-    if not shop_has_feature(shop_id, "inventory_management"):
-        flash("Inventory is not enabled for this shop.", "danger")
+    if not shop_has_feature(shop_id, "staff_advances"):
+        flash("Advances are not enabled for this shop.", "danger")
         return redirect(url_for("dashboard"))
 
     
@@ -4053,6 +4053,69 @@ def reset_shop_admin_password(shop_id):
     conn.close()
     return render_template("reset_shop_password.html", shop=shop, admins=admins)
 
+@app.route("/platform/backup")
+def platform_backup():
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    backup_data = {
+        "backup_date": datetime.now().isoformat(),
+        "system": "OshaSmart Platform",
+        "tables": {}
+    }
+
+    tables = [
+        "shops", "shop_features", "users", "staff", "vehicle_types", "services",
+        "prices", "washes", "wash_services", "products", "product_categories",
+        "stock_movements", "staff_advances", "commission_payments"
+    ]
+
+    for table in tables:
+        try:
+            cursor.execute(f"SELECT * FROM {table}")
+            rows = cursor.fetchall()
+            backup_data["tables"][table] = [dict(row) for row in rows]
+        except Exception as e:
+            backup_data["tables"][table] = {"error": str(e)}
+
+    cursor.close()
+    conn.close()
+
+    output = BytesIO()
+    output.write(json.dumps(backup_data, indent=2, default=str).encode("utf-8"))
+    output.seek(0)
+    filename = f"oshasmart_platform_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+    return send_file(
+        output,
+        mimetype="application/json",
+        as_attachment=True,
+        download_name=filename
+    )
+
+@app.context_processor
+def inject_shop():
+    shop_name = "Luxe Carwash"
+    if session.get("shop_id"):
+        try:
+            conn = get_connection()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT name FROM shops WHERE shop_id = %s", (session["shop_id"],))
+            row = cur.fetchone()
+            if row:
+                shop_name = row["name"]
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
+    return {
+        "current_shop_name": shop_name,
+        "platform_name": "OshaSmart",
+        "shop_has_feature": shop_has_feature,  # make helper available in templates
+    }
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
