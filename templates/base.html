@@ -31,6 +31,7 @@
                     <a href="{{ url_for('platform_dashboard') }}" class="nav-item"><i class="fas fa-building"></i> All Shops</a>
                     <a href="{{ url_for('create_shop') }}" class="nav-item"><i class="fas fa-plus-circle"></i> Create Shop </a>
                     <a href="{{ url_for('change_password') }}" class="nav-item"><i class="fas fa-key"></i> Change Password</a>
+                    <a href="{{ url_for('platform_backup') }}" class="btn">Download Platform Backup</a>
 
                 {% elif session.get('impersonator_id') %}
                     <div style="background:#d4af37; color:#000; padding:8px; text-align:center;">
@@ -55,15 +56,19 @@
                     <div class="nav-section">COMMISSIONS</div>
                     <a href="{{ url_for('daily_commissions') }}" class="nav-item"><i class="fas fa-coins"></i> Daily Commissions</a>
                     <a href="{{ url_for('weekly_commissions') }}" class="nav-item"><i class="fas fa-hand-holding-usd"></i> Weekly Payout</a>
+
+                    {% if shop_has_feature(session.get('shop_id'), 'inventory_management') %}
                     <a href="{{ url_for('staff_performance') }}" class="nav-item"><i class="fas fa-chart-line"></i> Performance</a>
                     <a href="{{ url_for('staff_advances') }}" class="nav-item"><i class="fas fa-money-bill-wave"></i> Staff Advances </a>
+                    {% endif %}
 
-                    <div class="nav-section">INVENTORY</div>
+                    {% if shop_has_feature(session.get('shop_id'), 'inventory_management') %}
                     <a href="{{ url_for('inventory_products') }}" class="nav-item"><i class="fas fa-box"></i> Products</a>
                     <a href="{{ url_for('stock_in') }}" class="nav-item"><i class="fas fa-dolly"></i> Stock In</a>
                     <a href="{{ url_for('sell_product') }}" class="nav-item"><i class="fas fa-shopping-cart"></i> Sell Product</a>
                     <a href="{{ url_for('inventory_report') }}" class="nav-item"><i class="fas fa-clipboard-list"></i> Stock Report</a>
                     <a href="{{ url_for('my_product_sales') }}" class="nav-item"><i class="fas fa-receipt"></i> Product Sales</a>
+                    {% endif %}
 
                     <div class="nav-section">MANAGEMENT</div>
                     <a href="{{ url_for('manage_staff') }}" class="nav-item"><i class="fas fa-users"></i> Manage Staff</a>
@@ -85,9 +90,10 @@
                     <a href="{{ url_for('search') }}" class="nav-item"><i class="fas fa-search"></i> Search</a>
                     <a href="{{ url_for('weekly_wash_history') }}" class="nav-item"><i class="fas fa-calendar-week"></i> Weekly History</a>
 
-                    <div class="nav-section">INVENTORY</div>
+                    {% if shop_has_feature(session.get('shop_id'), 'inventory_management') %}
                     <a href="{{ url_for('sell_product') }}" class="nav-item"><i class="fas fa-shopping-cart"></i> Sell Product</a>
                     <a href="{{ url_for('my_product_sales') }}" class="nav-item"><i class="fas fa-receipt"></i> My Product Sales</a>
+                    {% endif %}
 
                 {% elif session.get('role') == 'staff' %}
                     <a href="{{ url_for('staff_dashboard') }}" class="nav-item"><i class="fas fa-user"></i> My Dashboard</a>
