@@ -2367,6 +2367,11 @@ def setup_inventory():
     if "user_id" not in session or session["role"] != "admin":
         return "Unauthorized", 403
 
+    shop_id = current_shop_id()
+    if not shop_has_feature(shop_id, "inventory_management"):
+        flash("Inventory is not enabled for this shop.", "danger")
+        return redirect(url_for("dashboard"))
+
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -2501,6 +2506,10 @@ def inventory_products():
 def delete_product(product_id):
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
+    shop_id = current_shop_id()
+    if not shop_has_feature(shop_id, "inventory_management"):
+        flash("Inventory is not enabled for this shop.", "danger")
+        return redirect(url_for("dashboard"))
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -2519,6 +2528,11 @@ def delete_product(product_id):
 def stock_in():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
+
+    shop_id = current_shop_id()
+    if not shop_has_feature(shop_id, "inventory_management"):
+        flash("Inventory is not enabled for this shop.", "danger")
+        return redirect(url_for("dashboard"))
 
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -2573,6 +2587,10 @@ def sell_product():
         return redirect(url_for("login"))
 
     shop_id = current_shop_id()
+    if not shop_has_feature(shop_id, "inventory_management"):
+        flash("Inventory is not enabled for this shop.", "danger")
+        return redirect(url_for("dashboard"))
+
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -2653,6 +2671,10 @@ def inventory_report():
         return redirect(url_for("login"))
 
     shop_id = current_shop_id()
+    if not shop_has_feature(shop_id, "inventory_management"):
+        flash("Inventory is not enabled for this shop.", "danger")
+        return redirect(url_for("dashboard"))
+
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -2702,6 +2724,11 @@ def setup_product_image():
     if "user_id" not in session or session["role"] != "admin":
         return "Unauthorized", 403
 
+    shop_id = current_shop_id()
+    if not shop_has_feature(shop_id, "inventory_management"):
+        flash("Inventory is not enabled for this shop.", "danger")
+        return redirect(url_for("dashboard"))
+
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -2723,6 +2750,10 @@ def my_product_sales():
         return redirect(url_for("login"))
 
     shop_id = current_shop_id()
+    if not shop_has_feature(shop_id, "inventory_management"):
+        flash("Inventory is not enabled for this shop.", "danger")
+        return redirect(url_for("dashboard"))
+
     today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
     selected_date = request.args.get("date") or today.isoformat()
 
