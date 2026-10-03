@@ -3086,6 +3086,11 @@ def staff_advances():
         return redirect(url_for("login"))
 
     shop_id = current_shop_id()
+    if not shop_has_feature(shop_id, "inventory_management"):
+        flash("Inventory is not enabled for this shop.", "danger")
+        return redirect(url_for("dashboard"))
+
+    
     today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
 
     conn = get_connection()
