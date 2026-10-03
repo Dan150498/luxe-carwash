@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ shop.name }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:560px;">
+  <h2>Edit Shop</h2>
+  <form method="POST">
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" name="name" value="{{ shop.name }}" required
+             style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+    </div>
+    <div class="form-group">
+      <label>Phone</label>
+      <input type="text" name="phone" value="{{ shop.phone or '' }}"
+             style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+    </div>
+    <div class="form-group">
+      <label>Location</label>
+      <input type="text" name="location" value="{{ shop.location or '' }}"
+             style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+    </div>
+    <div class="form-group">
+      <label>Plan</label>
+      <select name="plan" style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        <option value="basic" {% if shop.plan == 'basic' %}selected{% endif %}>Basic</option>
+        <option value="standard" {% if shop.plan == 'standard' %}selected{% endif %}>Standard</option>
+        <option value="pro" {% if shop.plan == 'pro' %}selected{% endif %}>Pro</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Subscription status</label>
+      <select name="subscription_status" style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        <option value="active" {% if (shop.subscription_status or 'active') == 'active' %}selected{% endif %}>Active</option>
+        <option value="trial" {% if shop.subscription_status == 'trial' %}selected{% endif %}>Trial</option>
+        <option value="past_due" {% if shop.subscription_status == 'past_due' %}selected{% endif %}>Past due</option>
+        <option value="cancelled" {% if shop.subscription_status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea name="notes" rows="3"
+                style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">{{ shop.notes or '' }}</textarea>
+    </div>
+    <button type="submit" class="btn">Save</button>
+    <a href="{{ url_for('platform_shop_detail', shop_id=shop.shop_id) }}" class="btn" style="background:#333;">Cancel</a>
+  </form>
+</div>
+{% endblock %}
