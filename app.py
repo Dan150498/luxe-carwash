@@ -67,6 +67,20 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 def current_shop_id():
     return session.get("shop_id") or 1
 
+def shop_has_feature(shop_id, feature_name):
+    if not shop_id:
+        return False
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT is_enabled FROM shop_features
+        WHERE shop_id = %s AND feature_name = %s
+    """, (shop_id, feature_name))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return bool(row and row[0])
+
 def get_connection():
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     return conn
@@ -316,6 +330,7 @@ def login():
             flash("Invalid username or password", "danger")
 
     return render_template("login.html")
+
 
 @app.route("/logout")
 def logout():
@@ -2420,11 +2435,10 @@ def inventory_products():
         return redirect(url_for("login"))
 
     shop_id = current_shop_id()
-        if not shop_has_feature(shop_id, "inventory_management"):
-            flash("Inventory is not enabled for this shop.", "danger")
-            return redirect(url_for("dashboard"))
+    if not shop_has_feature(shop_id, "inventory_management"):
+        flash("Inventory is not enabled for this shop.", "danger")
+        return redirect(url_for("dashboard"))
 
-    shop_id = current_shop_id()
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
