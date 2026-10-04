@@ -1283,7 +1283,7 @@ def manage_types_services():
         services=services
     )
 
-    
+
 @app.route("/add-vehicle-type", methods=["POST"])
 def add_vehicle_type():
     if "user_id" not in session or session["role"] != "admin":
@@ -1502,10 +1502,10 @@ def edit_wash(wash_id):
                         s.get("commission_value", 30),
                         s["amount"]
                     )
-                                        cursor.execute("""
-                        INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
-                        VALUES (%s, %s, %s, %s)
-                    """, (wash_id, adj_service["service_id"], extra_amount, commission))
+            cursor.execute("""
+                INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
+                VALUES (%s, %s, %s, %s)
+             """, (wash_id, adj_service["service_id"], extra_amount, commission))
 
             # 4. Recompute total_amount from the actual line items — never typed directly
             cursor.execute("SELECT COALESCE(SUM(amount), 0) as total FROM wash_services WHERE wash_id = %s", (wash_id,))
