@@ -47,21 +47,42 @@
 
 <!-- Services Section -->
 <div class="card">
-    <h2>Services</h2>
+    <h2>Services & Commission Rules</h2>
 
-    <form method="POST" action="{{ url_for('add_service') }}" style="margin-bottom:25px; background:#111; padding:20px; border-radius:8px; border:1px solid #333;">
+    <!-- Add new service -->
+    <form method="POST" action="{{ url_for('manage_types_services') }}"
+          style="margin-bottom:25px; background:#111; padding:20px; border-radius:8px; border:1px solid #333;">
         <h3 style="color:#d4af37; margin-bottom:15px; font-size:1.1rem;">Add New Service</h3>
+        <input type="hidden" name="action" value="add_service">
         <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end;">
-            <div class="form-group" style="margin-bottom:0; flex:1; min-width:220px;">
+            <div class="form-group" style="margin-bottom:0; flex:1; min-width:180px;">
                 <label>Service Name</label>
-                <input type="hidden" name="action" value="add_service">
-                <input type="text" name="name" required placeholder="e.g. Interior Detailing"
+                <input type="text" name="service_name" required placeholder="e.g. Interior Detailing"
+                       style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+            </div>
+            <div class="form-group" style="margin-bottom:0; min-width:140px;">
+                <label>Commission type</label>
+                <select name="commission_type"
+                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+                    <option value="percentage">Percentage</option>
+                    <option value="flat">Flat (KSh)</option>
+                    <option value="full">Full amount</option>
+                    <option value="none">None</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0; min-width:100px;">
+                <label>Value</label>
+                <input type="number" name="commission_value" value="30" min="0"
                        style="width:100%; padding:10px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
             </div>
             <button type="submit" class="btn">Add Service</button>
         </div>
+        <p style="color:#888; font-size:12px; margin-top:10px; margin-bottom:0;">
+            Percentage: 30 means 30% of price. Flat: 100 means KSh 100 fixed. Full: staff gets whole amount.
+        </p>
     </form>
 
+    <!-- Existing services: edit commission -->
     {% if services %}
         <div style="overflow-x:auto;">
             <table style="width:100%; border-collapse:collapse;">
@@ -69,6 +90,7 @@
                     <tr style="background:#111; color:#d4af37;">
                         <th style="padding:12px; text-align:left; border-bottom:1px solid #333;">ID</th>
                         <th style="padding:12px; text-align:left; border-bottom:1px solid #333;">Name</th>
+                        <th style="padding:12px; text-align:left; border-bottom:1px solid #333;">Commission</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -76,6 +98,25 @@
                     <tr style="border-bottom:1px solid #222;">
                         <td style="padding:12px;">{{ s.service_id }}</td>
                         <td style="padding:12px;">{{ s.name }}</td>
+                        <td style="padding:12px;">
+                            <form method="POST" action="{{ url_for('manage_types_services') }}"
+                                  style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0;">
+                                <input type="hidden" name="action" value="update_commission">
+                                <input type="hidden" name="service_id" value="{{ s.service_id }}">
+                                <select name="commission_type"
+                                        style="padding:8px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+                                    <option value="percentage" {% if s.commission_type == 'percentage' %}selected{% endif %}>Percentage</option>
+                                    <option value="flat" {% if s.commission_type == 'flat' %}selected{% endif %}>Flat (KSh)</option>
+                                    <option value="full" {% if s.commission_type == 'full' %}selected{% endif %}>Full amount</option>
+                                    <option value="none" {% if s.commission_type == 'none' %}selected{% endif %}>None</option>
+                                </select>
+                                <input type="number" name="commission_value"
+                                       value="{{ s.commission_value if s.commission_value is defined else 30 }}"
+                                       min="0"
+                                       style="padding:8px; width:80px; background:#0d0d0d; color:white; border:1px solid #333; border-radius:6px;">
+                                <button type="submit" class="btn" style="padding:6px 12px;">Save</button>
+                            </form>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
