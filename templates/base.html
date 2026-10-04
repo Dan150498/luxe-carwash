@@ -8,6 +8,25 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
+    {# ===== BILLING / TRIAL BANNER — put it here ===== #}
+    {% if subscription_status == 'trial' and session.get('role') in ['admin', 'cashier'] %}
+    <div style="background:#ff9800; color:#000; padding:8px; text-align:center;">
+        Trial plan — upgrade before it ends. Contact OshaSmart for billing.
+    </div>
+    {% elif subscription_status == 'past_due' %}
+    <div style="background:#f44336; color:#fff; padding:8px; text-align:center;">
+        Payment past due — access may be limited. Contact OshaSmart.
+    </div>
+    {% endif %}
+
+    {# Support / impersonation banner (if you have it) #}
+    {% if session.get('impersonator_id') %}
+    <div style="background:#d4af37; color:#000; padding:8px; text-align:center;">
+        Support mode — viewing as shop admin
+        <a href="{{ url_for('exit_shop') }}" style="margin-left:12px; font-weight:bold; color:#000;">Exit Shop</a>
+    </div>
+    {% endif %}
+    
     <div class="layout">
         <!-- SIDEBAR -->
         <aside class="sidebar" id="sidebar">
@@ -26,12 +45,13 @@
             </div>
 
            <nav class="sidebar-nav">
+
                 {% if session.get('role') == 'superadmin' %}
                     <div class="nav-section">PLATFORM</div>
                     <a href="{{ url_for('platform_dashboard') }}" class="nav-item"><i class="fas fa-building"></i> All Shops</a>
                     <a href="{{ url_for('create_shop') }}" class="nav-item"><i class="fas fa-plus-circle"></i> Create Shop </a>
                     <a href="{{ url_for('change_password') }}" class="nav-item"><i class="fas fa-key"></i> Change Password</a>
-                    <a href="{{ url_for('platform_backup') }}" class="btn">Download Platform Backup</a>
+                    <a href="{{ url_for('backup_page') }}" class="nav-item"><i class="fas fa-database"></i> Database Backup</a>
 
                 {% elif session.get('impersonator_id') %}
                     <div style="background:#d4af37; color:#000; padding:8px; text-align:center;">
@@ -78,6 +98,8 @@
                     <a href="{{ url_for('reports') }}" class="nav-item"><i class="fas fa-file-alt"></i> Reports</a>
 
                     <a href="{{ url_for('backup_page') }}" class="nav-item"><i class="fas fa-database"></i> Database Backup</a>
+
+                    
 
                 {% elif session.get('role') == 'cashier' %}
 
