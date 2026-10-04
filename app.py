@@ -109,16 +109,29 @@ def get_connection():
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-def compute_commission(rule, amount):
-    """Single source of truth for commission math, driven by services.commission_rule."""
-    if rule == "flat100":
-        return 100
+def compute_commission(commission_type, commission_value, amount):
+    """
+    commission_type: percentage | flat | full | none
+    commission_value: e.g. 30 for 30%, or 100 for flat KSh 100
+    amount: service line amount in KSh
+    """
+    try:
+        amount = int(amount or 0)
+        value = int(commission_value if commission_value is not None else 0)
+    except (TypeError, ValueError):
+        return 0
+
+    rule = (commission_type or "percentage").strip().lower()
+
+    if rule == "flat":
+        return max(0, value)
     elif rule == "full":
-        return int(amount)
+        return max(0, amount)
     elif rule == "none":
         return 0
-    else:  # 'standard'
-        return int(round(amount * 0.30))
+    else:
+        # percentage
+        return int(round(amount * value / 100.0))
 
 # ====================== CREATE TABLES (first time only) ======================
 def init_db():
@@ -514,11 +527,14 @@ def record_wash():
         service_details = []
         for sid in selected_services:
             cursor.execute("""
-                SELECT s.service_id, s.name, s.commission_rule, p.amount
+                SELECT s.service_id, s.name,
+                    COALESCE(s.commission_type, 'percentage') as commission_type,
+                    COALESCE(s.commission_value, 30) as commission_value,
+                    p.amount
                 FROM prices p
                 JOIN services s ON p.service_id = s.service_id
                 WHERE p.vehicle_type_id = %s AND s.service_id = %s
-                  AND s.shop_id = %s
+                AND s.shop_id = %s
             """, (vehicle_type_id, sid, shop_id))
             row = cursor.fetchone()
             if row:
@@ -560,7 +576,11 @@ def record_wash():
             wash_id = cursor.fetchone()["wash_id"]
 
             for s in service_details:
-                commission = compute_commission(s.get("commission_rule", "standard"), s["amount"])
+                commission = compute_commission(
+                    s.get("commission_type", "percentage"),
+                    s.get("commission_value", 30),
+                    s["amount"]
+                )
                 cursor.execute("""
                     INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
                     VALUES (%s, %s, %s, %s)
@@ -1171,44 +1191,88 @@ def manage_types_services():
     if request.method == "POST":
         action = request.form.get("action")
 
-        if action == "add_type":
-            name = request.form.get("type_name", "").strip()
-            if name:
-                try:
+        try:
+            if action == "add_type":
+                name = (request.form.get("type_name") or request.form.get("name") or "").strip()
+                if name:
                     cursor.execute("""
                         INSERT INTO vehicle_types (name, shop_id)
                         VALUES (%s, %s)
-                    """, (name, current_shop_id()))
+                    """, (name, shop_id))
                     conn.commit()
                     flash(f"Vehicle type '{name}' added.", "success")
-                except Exception as e:
-                    flash(f"Error: {e}", "danger")
+                else:
+                    flash("Name is required.", "danger")
 
-        elif action == "add_service":
-            name = request.form.get("service_name", "").strip()
-            rule = request.form.get("commission_rule", "standard")
-            if name:
+            elif action == "add_service":
+                name = (request.form.get("service_name") or request.form.get("name") or "").strip()
+                commission_type = request.form.get("commission_type", "percentage")
                 try:
+                    commission_value = int(request.form.get("commission_value", 30) or 30)
+                except ValueError:
+                    commission_value = 30
+
+                if not name:
+                    flash("Service name is required.", "danger")
+                else:
                     cursor.execute("""
-                        INSERT INTO services (name, commission_rule, shop_id)
-                        VALUES (%s, %s, %s)
-                    """, (name, rule, shop_id))
+                        INSERT INTO services
+                        (name, is_package, commission_rule, commission_type, commission_value, shop_id)
+                        VALUES (%s, 0, %s, %s, %s, %s)
+                    """, (name, "standard", commission_type, commission_value, shop_id))
                     conn.commit()
                     flash(f"Service '{name}' added.", "success")
-                except Exception as e:
-                    flash(f"Error: {e}", "danger")
 
-    cursor.execute("""
-        SELECT vehicle_type_id, name FROM vehicle_types
-        WHERE shop_id = %s ORDER BY name
-    """, (shop_id,))
-    vehicle_types = cursor.fetchall()
+            elif action == "update_commission":
+                service_id = request.form.get("service_id")
+                commission_type = request.form.get("commission_type", "percentage")
+                try:
+                    commission_value = int(request.form.get("commission_value", 30) or 30)
+                except ValueError:
+                    commission_value = 30
 
-    cursor.execute("""
-        SELECT service_id, name, commission_rule FROM services
-        WHERE shop_id = %s ORDER BY name
-    """, (shop_id,))
-    services = cursor.fetchall()
+                cursor.execute("""
+                    UPDATE services
+                    SET commission_type = %s, commission_value = %s
+                    WHERE service_id = %s AND shop_id = %s
+                """, (commission_type, commission_value, service_id, shop_id))
+                conn.commit()
+                flash("Commission rule updated.", "success")
+
+        except Exception as e:
+            conn.rollback()
+            err = str(e)
+            if "commission_type" in err or "commission_value" in err:
+                flash("Commission columns missing. Open /setup-commission-config?token=oshasmart-setup-2026 first.", "danger")
+            elif "unique" in err.lower() or "duplicate" in err.lower():
+                flash("That name already exists for your shop.", "danger")
+            else:
+                flash(f"Error: {e}", "danger")
+            print(f"manage_types_services error: {e}")
+
+    # Always reload lists (new transaction after commit/rollback)
+    try:
+        cursor.execute("""
+            SELECT vehicle_type_id, name FROM vehicle_types
+            WHERE shop_id = %s ORDER BY name
+        """, (shop_id,))
+        vehicle_types = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT service_id, name,
+                   COALESCE(commission_type, 'percentage') as commission_type,
+                   COALESCE(commission_value, 30) as commission_value
+            FROM services
+            WHERE shop_id = %s
+            ORDER BY name
+        """, (shop_id,))
+        services = cursor.fetchall()
+    except Exception as e:
+        conn.rollback()
+        vehicle_types = []
+        services = []
+        flash(f"Could not load lists: {e}", "danger")
+        print(e)
 
     cursor.close()
     conn.close()
@@ -1219,6 +1283,7 @@ def manage_types_services():
         services=services
     )
 
+    
 @app.route("/add-vehicle-type", methods=["POST"])
 def add_vehicle_type():
     if "user_id" not in session or session["role"] != "admin":
@@ -1432,8 +1497,12 @@ def edit_wash(wash_id):
                 cursor.execute("SELECT service_id, commission_rule FROM services WHERE name = %s", (service_name,))
                 adj_service = cursor.fetchone()
                 if adj_service:
-                    commission = compute_commission(adj_service["commission_rule"], extra_amount)
-                    cursor.execute("""
+                    commission = compute_commission(
+                        s.get("commission_type", "percentage"),
+                        s.get("commission_value", 30),
+                        s["amount"]
+                    )
+                                        cursor.execute("""
                         INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
                         VALUES (%s, %s, %s, %s)
                     """, (wash_id, adj_service["service_id"], extra_amount, commission))
@@ -1982,7 +2051,11 @@ def extra_approvals():
                 service = cursor.fetchone()
 
                 if service:
-                    commission = compute_commission(service["commission_rule"], req["extra_amount"])
+                    commission = compute_commission(
+                        s.get("commission_type", "percentage"),
+                        s.get("commission_value", 30),
+                        s["amount"]
+                    )
 
                     cursor.execute("""
                         INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
@@ -2272,11 +2345,15 @@ def start_wash():
         service_details = []
         for sid in selected_services:
             cursor.execute("""
-                SELECT s.service_id, s.name, s.commission_rule, p.amount
+                SELECT s.service_id, s.name,
+                    COALESCE(s.commission_type, 'percentage') as commission_type,
+                    COALESCE(s.commission_value, 30) as commission_value,
+                    p.amount
                 FROM prices p
                 JOIN services s ON p.service_id = s.service_id
                 WHERE p.vehicle_type_id = %s AND s.service_id = %s
-            """, (vehicle_type_id, sid))
+                AND s.shop_id = %s
+            """, (vehicle_type_id, sid, shop_id))
             row = cursor.fetchone()
             if row:
                 total += row["amount"]
@@ -2305,7 +2382,11 @@ def start_wash():
             wash_id = cursor.fetchone()["wash_id"]
 
             for s in service_details:
-                commission = compute_commission(s["commission_rule"], s["amount"])
+                commission = compute_commission(
+                    s.get("commission_type", "percentage"),
+                    s.get("commission_value", 30),
+                    s["amount"]
+)
                 cursor.execute("""
                     INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
                     VALUES (%s, %s, %s, %s)
