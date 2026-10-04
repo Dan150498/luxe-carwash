@@ -51,8 +51,8 @@
                     <a href="{{ url_for('platform_dashboard') }}" class="nav-item"><i class="fas fa-building"></i> All Shops</a>
                     <a href="{{ url_for('create_shop') }}" class="nav-item"><i class="fas fa-plus-circle"></i> Create Shop </a>
                     <a href="{{ url_for('change_password') }}" class="nav-item"><i class="fas fa-key"></i> Change Password</a>
-                    <a href="{{ url_for('backup_page') }}" class="nav-item"><i class="fas fa-database"></i> Database Backup</a>
-
+                    <a href="{{ url_for('platform_backup') }}" class="btn">Download Platform Backup</a>
+                    
                 {% elif session.get('impersonator_id') %}
                     <div style="background:#d4af37; color:#000; padding:8px; text-align:center;">
                         Support mode — viewing as shop admin
