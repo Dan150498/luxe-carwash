@@ -81,6 +81,27 @@ def shop_has_feature(shop_id, feature_name):
     conn.close()
     return bool(row and row[0])
 
+def shop_subscription_ok(shop_id):
+    """False if shop is past_due or cancelled (soft lock)."""
+    if not shop_id:
+        return True  # superadmin has no shop
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT is_active, COALESCE(subscription_status, 'active') as subscription_status
+        FROM shops WHERE shop_id = %s
+    """, (shop_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        return False
+    if not row["is_active"]:
+        return False
+    if row["subscription_status"] in ("past_due", "cancelled"):
+        return False
+    return True
+
 def get_connection():
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     return conn
@@ -302,12 +323,35 @@ def login():
 
             if user.get("staff_id"):
                 session["staff_id"] = user["staff_id"]
-
+###==================================or non-superadmin=====
             if user.get("must_change_password") == 1:
                 flash("You must change your password before continuing.", "info")
                 return redirect(url_for("change_password"))
 
             flash(f"Welcome, {user['full_name']}!", "success")
+
+                    if user and user["role"] != "superadmin" and user.get("shop_id"):
+            conn2 = get_connection()
+            cur2 = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur2.execute("""
+                SELECT is_active, COALESCE(subscription_status, 'active') as subscription_status, name
+                FROM shops WHERE shop_id = %s
+            """, (user["shop_id"],))
+            shop = cur2.fetchone()
+            cur2.close()
+            conn2.close()
+
+            if not shop or not shop["is_active"]:
+                flash("This shop is inactive. Contact OshaSmart support.", "danger")
+                return render_template("login.html")
+
+            if shop["subscription_status"] in ("past_due", "cancelled"):
+                flash(
+                    f"Billing issue for {shop['name']}: subscription is {shop['subscription_status']}. "
+                    "Please contact OshaSmart to restore access.",
+                    "danger"
+                )
+                return render_template("login.html")
 
             if user["role"] == "superadmin":
                 session["user_id"] = user["user_id"]
@@ -3424,21 +3468,29 @@ def check_shop():
 @app.context_processor
 def inject_shop():
     shop_name = "Luxe Carwash"
-    if session.get("shop_id"):
+    subscription_status = "active"
+    shop_id = session.get("shop_id")
+    if shop_id:
         try:
             conn = get_connection()
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute("SELECT name FROM shops WHERE shop_id = %s", (session["shop_id"],))
+            cur.execute(
+                "SELECT name, COALESCE(subscription_status, 'active') as subscription_status FROM shops WHERE shop_id = %s",
+                (shop_id,)
+            )
             row = cur.fetchone()
             if row:
                 shop_name = row["name"]
+                subscription_status = row["subscription_status"]
             cur.close()
             conn.close()
-        except:
+        except Exception:
             pass
     return {
         "current_shop_name": shop_name,
-        "platform_name": "OshaSmart"
+        "platform_name": "OshaSmart",
+        "shop_has_feature": shop_has_feature,
+        "subscription_status": subscription_status,
     }
 
 @app.route("/create-shop", methods=["GET", "POST"])
@@ -3475,6 +3527,21 @@ def create_shop():
                     INSERT INTO users (username, password_hash, full_name, role, is_active, shop_id)
                     VALUES (%s, %s, %s, 'admin', 1, %s)
                 """, (admin_username, hash_password(admin_password), admin_fullname, new_shop_id))
+
+                                # Seed default feature flags for the new shop
+                default_features = [
+                    "inventory_management",
+                    "staff_commissions",
+                    "staff_advances",
+                    "product_sales",
+                    "pending_wash",
+                ]
+                for feature in default_features:
+                    cursor.execute("""
+                        INSERT INTO shop_features (shop_id, feature_name, is_enabled)
+                        VALUES (%s, %s, 1)
+                        ON CONFLICT (shop_id, feature_name) DO NOTHING
+                    """, (new_shop_id, feature))
 
                 # NO copy of types/services/prices — shop starts empty
                 conn.commit()
@@ -3841,6 +3908,9 @@ def exit_shop():
     flash("Returned to OshaSmart platform.", "success")
     return redirect(url_for("platform_dashboard"))
 
+
+
+
 #==============================================superadmin=====================================================
 @app.route("/setup-superadmin")
 def setup_superadmin():
@@ -4116,6 +4186,31 @@ def inject_shop():
         "platform_name": "OshaSmart",
         "shop_has_feature": shop_has_feature,  # make helper available in templates
     }
+
+@app.before_request
+def check_subscription_lock():
+    # Skip static, login, logout, platform, setup
+    if request.endpoint in (
+        None, "login", "logout", "static",
+        "platform_dashboard", "create_shop", "list_shops",
+        "platform_backup", "exit_shop", "change_password"
+    ):
+        return
+    if request.endpoint and request.endpoint.startswith("platform"):
+        return
+    if request.endpoint and request.endpoint.startswith("setup"):
+        return
+
+    if session.get("role") == "superadmin":
+        return
+    if session.get("impersonator_id"):
+        return  # support mode still works
+
+    shop_id = session.get("shop_id")
+    if shop_id and not shop_subscription_ok(shop_id):
+        session.clear()
+        flash("Your shop subscription needs attention. Contact OshaSmart.", "danger")
+        return redirect(url_for("login"))
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
