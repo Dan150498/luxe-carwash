@@ -303,12 +303,41 @@ def login():
         conn.close()
 
         if user:
+            # --- Billing / inactive shop check (NOT for superadmin) ---
+            if user["role"] != "superadmin" and user.get("shop_id"):
+                conn2 = get_connection()
+                cur2 = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur2.execute("""
+                    SELECT is_active,
+                           COALESCE(subscription_status, 'active') as subscription_status,
+                           name
+                    FROM shops
+                    WHERE shop_id = %s
+                """, (user["shop_id"],))
+                shop = cur2.fetchone()
+                cur2.close()
+                conn2.close()
+
+                if not shop or not shop["is_active"]:
+                    flash("This shop is inactive. Contact OshaSmart support.", "danger")
+                    return render_template("login.html")
+
+                if shop["subscription_status"] in ("past_due", "cancelled"):
+                    flash(
+                        f"Billing issue for {shop['name']}: subscription is {shop['subscription_status']}. "
+                        "Please contact OshaSmart to restore access.",
+                        "danger"
+                    )
+                    return render_template("login.html")
+
             session["user_id"] = user["user_id"]
             session["username"] = user["username"]
             session["full_name"] = user["full_name"]
             session["role"] = user["role"]
             session["shop_id"] = user.get("shop_id") or 1   # Luxe default
             session.permanent = True
+
+            
 
             if user and user.get("shop_id"):
                         conn2 = get_connection()
@@ -330,28 +359,6 @@ def login():
 
             flash(f"Welcome, {user['full_name']}!", "success")
 
-                    if user and user["role"] != "superadmin" and user.get("shop_id"):
-            conn2 = get_connection()
-            cur2 = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur2.execute("""
-                SELECT is_active, COALESCE(subscription_status, 'active') as subscription_status, name
-                FROM shops WHERE shop_id = %s
-            """, (user["shop_id"],))
-            shop = cur2.fetchone()
-            cur2.close()
-            conn2.close()
-
-            if not shop or not shop["is_active"]:
-                flash("This shop is inactive. Contact OshaSmart support.", "danger")
-                return render_template("login.html")
-
-            if shop["subscription_status"] in ("past_due", "cancelled"):
-                flash(
-                    f"Billing issue for {shop['name']}: subscription is {shop['subscription_status']}. "
-                    "Please contact OshaSmart to restore access.",
-                    "danger"
-                )
-                return render_template("login.html")
 
             if user["role"] == "superadmin":
                 session["user_id"] = user["user_id"]
