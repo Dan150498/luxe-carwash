@@ -3915,7 +3915,59 @@ def exit_shop():
     flash("Returned to OshaSmart platform.", "success")
     return redirect(url_for("platform_dashboard"))
 
+@app.route("/setup-commission-config")
+def setup_commission_config():
+    token = request.args.get("token")
+    if token != "oshasmart-setup-2026":
+        if "user_id" not in session or session.get("role") not in ("admin", "superadmin"):
+            return "Unauthorized", 403
 
+    conn = get_connection()
+    cursor = conn.cursor()
+    messages = []
+    try:
+        cursor.execute("""
+            ALTER TABLE services
+            ADD COLUMN IF NOT EXISTS commission_type TEXT DEFAULT 'percentage'
+        """)
+        cursor.execute("""
+            ALTER TABLE services
+            ADD COLUMN IF NOT EXISTS commission_value INTEGER DEFAULT 30
+        """)
+        messages.append("Columns added")
+
+        # Backfill from old commission_rule
+        cursor.execute("""
+            UPDATE services
+            SET commission_type = 'percentage', commission_value = 30
+            WHERE COALESCE(commission_rule, 'standard') = 'standard'
+               OR commission_rule IS NULL
+        """)
+        cursor.execute("""
+            UPDATE services
+            SET commission_type = 'flat', commission_value = 100
+            WHERE commission_rule = 'flat100'
+        """)
+        cursor.execute("""
+            UPDATE services
+            SET commission_type = 'full', commission_value = 100
+            WHERE commission_rule = 'full'
+        """)
+        cursor.execute("""
+            UPDATE services
+            SET commission_type = 'none', commission_value = 0
+            WHERE commission_rule = 'none'
+        """)
+        messages.append("Backfill from commission_rule done")
+
+        conn.commit()
+        result = "SUCCESS<br>" + "<br>".join(messages)
+    except Exception as e:
+        conn.rollback()
+        result = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return result
 
 
 #==============================================superadmin=====================================================
