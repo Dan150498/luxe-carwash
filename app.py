@@ -2049,6 +2049,7 @@ def extra_approvals():
         if req:
             if action == "approve":
                 # Apply the extra to the wash
+    shop_id = current_shop_id()
                 service_name = "Extra Payment" if req["extra_type"] == "payment" else "Staff Tip"
                 cursor.execute("""
                     SELECT service_id,
