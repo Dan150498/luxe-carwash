@@ -1661,6 +1661,8 @@ def weekly_commissions():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
+    shop_id = current_shop_id()   # <-- MUST be first
+
     today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
     start_of_week = today - timedelta(days=today.weekday())
     end_of_week = start_of_week + timedelta(days=6)
@@ -1675,82 +1677,81 @@ def weekly_commissions():
     if request.method == "POST" and request.form.get("action") == "mark_paid":
         staff_ids = request.form.getlist("staff_ids")
         for sid in staff_ids:
-            # Commission
             cursor.execute("""
                 SELECT COALESCE(SUM(ws.commission_amount), 0) as total
                 FROM washes w
                 JOIN wash_services ws ON w.wash_id = ws.wash_id
-                WHERE w.staff_id = %s AND w.wash_date BETWEEN %s AND %s
-            """, (sid, start_date, end_date))
+                WHERE w.staff_id = %s
+                  AND w.shop_id = %s
+                  AND w.wash_date BETWEEN %s AND %s
+            """, (sid, shop_id, start_date, end_date))
             commission = cursor.fetchone()["total"]
 
-            # Advances
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0) as total
                 FROM staff_advances
-                WHERE staff_id = %s AND advance_date BETWEEN %s AND %s
-            """, (sid, start_date, end_date))
+                WHERE staff_id = %s
+                  AND shop_id = %s
+                  AND advance_date BETWEEN %s AND %s
+            """, (sid, shop_id, start_date, end_date))
             advances = cursor.fetchone()["total"]
 
-            net_pay = commission - advances
-            if net_pay < 0:
-                net_pay = 0
+            net_pay = max(0, commission - advances)
 
             cursor.execute("""
-                SELECT 1 FROM commission_payments 
-                WHERE staff_id = %s AND start_date = %s AND end_date = %s
-            """, (sid, start_date, end_date))
+                SELECT 1 FROM commission_payments
+                WHERE staff_id = %s AND start_date = %s AND end_date = %s AND shop_id = %s
+            """, (sid, start_date, end_date, shop_id))
             if not cursor.fetchone() and commission > 0:
                 cursor.execute("""
-                    INSERT INTO commission_payments (staff_id, start_date, end_date, total_amount, paid_by, shop_id)
+                    INSERT INTO commission_payments
+                    (staff_id, start_date, end_date, total_amount, paid_by, shop_id)
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """, (sid, start_date, end_date, net_pay, session.get("full_name"), shop_id))
 
-                # Mark advances as deducted
                 cursor.execute("""
                     UPDATE staff_advances
                     SET is_deducted = 1
-                    WHERE staff_id = %s AND advance_date BETWEEN %s AND %s
-                """, (sid, start_date, end_date))
+                    WHERE staff_id = %s
+                      AND shop_id = %s
+                      AND advance_date BETWEEN %s AND %s
+                """, (sid, shop_id, start_date, end_date))
 
         conn.commit()
         flash("Selected staff marked as Paid (advances deducted)!", "success")
 
-    # Get data with advances
-    shop_id = current_shop_id()
-
     cursor.execute("""
-        SELECT 
+        SELECT
             s.staff_id,
             s.full_name,
             COUNT(DISTINCT w.wash_id) as total_washes,
             COALESCE(SUM(ws.commission_amount), 0) as total_commission,
             COALESCE((
-                SELECT SUM(a.amount) FROM staff_advances a 
-                WHERE a.staff_id = s.staff_id 
-                AND a.shop_id = %s
-                AND a.advance_date BETWEEN %s AND %s
+                SELECT SUM(a.amount) FROM staff_advances a
+                WHERE a.staff_id = s.staff_id
+                  AND a.shop_id = %s
+                  AND a.advance_date BETWEEN %s AND %s
             ), 0) as total_advances,
             EXISTS (
-                SELECT 1 FROM commission_payments cp 
-                WHERE cp.staff_id = s.staff_id 
-                AND cp.shop_id = %s
-                AND cp.start_date = %s AND cp.end_date = %s
+                SELECT 1 FROM commission_payments cp
+                WHERE cp.staff_id = s.staff_id
+                  AND cp.shop_id = %s
+                  AND cp.start_date = %s AND cp.end_date = %s
             ) as is_paid
         FROM staff s
-        LEFT JOIN washes w ON s.staff_id = w.staff_id 
+        LEFT JOIN washes w ON s.staff_id = w.staff_id
             AND w.shop_id = %s
             AND w.wash_date BETWEEN %s AND %s
         LEFT JOIN wash_services ws ON w.wash_id = ws.wash_id
         WHERE s.is_active = 1 AND s.shop_id = %s
         GROUP BY s.staff_id, s.full_name
         ORDER BY total_commission DESC
-    """, (shop_id, start_date, end_date, shop_id, start_date, end_date,
-        shop_id, start_date, end_date, shop_id))
+    """, (shop_id, start_date, end_date,
+          shop_id, start_date, end_date,
+          shop_id, start_date, end_date,
+          shop_id))
 
     results = cursor.fetchall()
-
-    # Add net_pay to each row
     for r in results:
         r["net_pay"] = max(0, (r["total_commission"] or 0) - (r["total_advances"] or 0))
 
@@ -1758,11 +1759,13 @@ def weekly_commissions():
     cursor.close()
     conn.close()
 
-    return render_template("weekly_commissions.html",
-                           results=results,
-                           start_date=start_date,
-                           end_date=end_date,
-                           grand_total=unpaid_total)
+    return render_template(
+        "weekly_commissions.html",
+        results=results,
+        start_date=start_date,
+        end_date=end_date,
+        grand_total=unpaid_total
+    )
 
 @app.route("/staff-performance")
 def staff_performance():
