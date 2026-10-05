@@ -1422,6 +1422,7 @@ def before_first_request():
 
 # ====================== RUN ======================
 
+
 @app.route("/edit-wash/<int:wash_id>", methods=["GET", "POST"])
 def edit_wash(wash_id):
     if "user_id" not in session or session["role"] != "admin":
@@ -1767,42 +1768,154 @@ def weekly_commissions():
         grand_total=unpaid_total
     )
 
-@app.route("/staff-performance")
+@app.route("/staff-performance", methods=["GET", "POST"])
 def staff_performance():
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
     shop_id = current_shop_id()
     today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
-    start_date = request.args.get("start") or (today - timedelta(days=30)).isoformat()
-    end_date = request.args.get("end") or today.isoformat()
+
+    start_raw = request.values.get("start") or request.values.get("start_date")
+    end_raw = request.values.get("end") or request.values.get("end_date")
+
+    try:
+        start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else (today - timedelta(days=30))
+    except ValueError:
+        start_date = today - timedelta(days=30)
+
+    try:
+        end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else today
+    except ValueError:
+        end_date = today
+
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
 
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+    # ---- Staff ranking ----
     cursor.execute("""
-        SELECT s.staff_id, s.full_name,
-               COUNT(DISTINCT w.wash_id) as total_washes,
-               COALESCE(SUM(ws.commission_amount), 0) as total_commission,
-               COALESCE(SUM(w.total_amount), 0) as total_revenue
+        SELECT
+            s.staff_id,
+            s.full_name,
+            COUNT(DISTINCT w.wash_id) AS total_washes,
+            COALESCE(SUM(ws.commission_amount), 0) AS total_commission,
+            COALESCE((
+                SELECT SUM(w2.total_amount)
+                FROM washes w2
+                WHERE w2.staff_id = s.staff_id
+                  AND w2.shop_id = %s
+                  AND w2.wash_date BETWEEN %s AND %s
+                  AND (w2.status = 'completed' OR w2.status IS NULL)
+            ), 0) AS total_revenue
         FROM staff s
-        LEFT JOIN washes w ON s.staff_id = w.staff_id
-            AND w.shop_id = %s
-            AND w.wash_date BETWEEN %s AND %s
+        LEFT JOIN washes w
+            ON s.staff_id = w.staff_id
+           AND w.shop_id = %s
+           AND w.wash_date BETWEEN %s AND %s
+           AND (w.status = 'completed' OR w.status IS NULL)
         LEFT JOIN wash_services ws ON w.wash_id = ws.wash_id
         WHERE s.is_active = 1 AND s.shop_id = %s
         GROUP BY s.staff_id, s.full_name
-        ORDER BY total_commission DESC
-    """, (shop_id, start_date, end_date, shop_id))
-    results = cursor.fetchall()
+        ORDER BY total_commission DESC, total_washes DESC
+    """, (shop_id, start_date, end_date,
+          shop_id, start_date, end_date,
+          shop_id))
+    staff_results = cursor.fetchall()
+
+    for r in staff_results:
+        washes = r["total_washes"] or 0
+        rev = r["total_revenue"] or 0
+        r["avg_per_wash"] = int(rev / washes) if washes else 0
+
+    total_washes = sum(r["total_washes"] or 0 for r in staff_results)
+    total_revenue = sum(r["total_revenue"] or 0 for r in staff_results)
+    total_commission = sum(r["total_commission"] or 0 for r in staff_results)
+
+    # ---- Top services ----
+    cursor.execute("""
+        SELECT
+            sv.name AS service_name,
+            COUNT(*) AS times_done,
+            COALESCE(SUM(ws.amount), 0) AS total_revenue
+        FROM wash_services ws
+        JOIN services sv ON ws.service_id = sv.service_id
+        JOIN washes w ON ws.wash_id = w.wash_id
+        WHERE w.shop_id = %s
+          AND w.wash_date BETWEEN %s AND %s
+          AND (w.status = 'completed' OR w.status IS NULL)
+        GROUP BY sv.name
+        ORDER BY times_done DESC
+        LIMIT 15
+    """, (shop_id, start_date, end_date))
+    top_services = cursor.fetchall()
+
+    # ---- Busiest days ----
+    cursor.execute("""
+        SELECT
+            w.wash_date,
+            TO_CHAR(w.wash_date, 'Day') AS day_name,
+            COUNT(*) AS total_washes,
+            COALESCE(SUM(w.total_amount), 0) AS total_revenue
+        FROM washes w
+        WHERE w.shop_id = %s
+          AND w.wash_date BETWEEN %s AND %s
+          AND (w.status = 'completed' OR w.status IS NULL)
+        GROUP BY w.wash_date
+        ORDER BY total_washes DESC, w.wash_date DESC
+        LIMIT 15
+    """, (shop_id, start_date, end_date))
+    busiest_days = cursor.fetchall()
+
+    # ---- Weekly comparison (last 8 weeks, shop-wide) ----
+    cursor.execute("""
+        SELECT
+            DATE_TRUNC('week', w.wash_date)::date AS week_start,
+            COUNT(*) AS total_washes,
+            COALESCE(SUM(w.total_amount), 0) AS total_revenue
+        FROM washes w
+        WHERE w.shop_id = %s
+          AND w.wash_date >= %s
+          AND (w.status = 'completed' OR w.status IS NULL)
+        GROUP BY DATE_TRUNC('week', w.wash_date)
+        ORDER BY week_start DESC
+        LIMIT 8
+    """, (shop_id, today - timedelta(weeks=8)))
+    weekly_comparison = cursor.fetchall()
+
+    # ---- Monthly comparison (last 6 months) ----
+    cursor.execute("""
+        SELECT
+            TO_CHAR(w.wash_date, 'YYYY-MM') AS month,
+            COUNT(*) AS total_washes,
+            COALESCE(SUM(w.total_amount), 0) AS total_revenue
+        FROM washes w
+        WHERE w.shop_id = %s
+          AND w.wash_date >= %s
+          AND (w.status = 'completed' OR w.status IS NULL)
+        GROUP BY TO_CHAR(w.wash_date, 'YYYY-MM')
+        ORDER BY month DESC
+        LIMIT 6
+    """, (shop_id, today - timedelta(days=180)))
+    monthly_comparison = cursor.fetchall()
+
     cursor.close()
     conn.close()
 
     return render_template(
         "staff_performance.html",
-        results=results,
-        start_date=start_date,
-        end_date=end_date
+        start_date=start_date.isoformat(),
+        end_date=end_date.isoformat(),
+        staff_results=staff_results,
+        top_services=top_services,
+        busiest_days=busiest_days,
+        weekly_comparison=weekly_comparison,
+        monthly_comparison=monthly_comparison,
+        total_washes=total_washes,
+        total_revenue=total_revenue,
+        total_commission=total_commission
     )
 
 @app.route("/setup-payments")
