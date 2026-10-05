@@ -1456,13 +1456,18 @@ def edit_wash(wash_id):
         old_vehicle_type_id = str(existing_wash["vehicle_type_id"])
         vehicle_changed = str(vehicle_type_id) != old_vehicle_type_id
 
-        try:
-            # 1. Reprice existing (non-adjustment) services if the vehicle type changed
+                try:
+            shop_id = current_shop_id()
+
+            # 1. Reprice existing (non-adjustment) services if vehicle type changed
             cursor.execute("""
-                SELECT ws.wash_service_id, ws.service_id, ws.amount, s.name, s.commission_rule
+                SELECT ws.wash_service_id, ws.service_id, ws.amount, s.name,
+                       COALESCE(s.commission_type, 'percentage') as commission_type,
+                       COALESCE(s.commission_value, 30) as commission_value
                 FROM wash_services ws
                 JOIN services s ON ws.service_id = s.service_id
-                WHERE ws.wash_id = %s AND s.is_adjustment = 0
+                WHERE ws.wash_id = %s
+                  AND COALESCE(s.is_adjustment, 0) = 0
             """, (wash_id,))
             service_rows = cursor.fetchall()
 
@@ -1475,41 +1480,74 @@ def edit_wash(wash_id):
                     price_row = cursor.fetchone()
                     if price_row:
                         new_amount = price_row["amount"]
-                        new_commission = compute_commission(row["commission_rule"], new_amount)
+                        new_commission = compute_commission(
+                            row["commission_type"],
+                            row["commission_value"],
+                            new_amount
+                        )
                         cursor.execute("""
                             UPDATE wash_services
                             SET amount = %s, commission_amount = %s
                             WHERE wash_service_id = %s
                         """, (new_amount, new_commission, row["wash_service_id"]))
                     else:
-                        flash(f"No price set for '{row['name']}' under the new vehicle type — kept its previous price.", "danger")
+                        flash(
+                            f"No price set for '{row['name']}' under the new vehicle type — kept previous price.",
+                            "danger"
+                        )
 
-            # 2. Remove any existing adjustment line (old Extra Payment / Staff Tip) for this wash
+            # 2. Remove existing adjustment lines (Extra Payment / Staff Tip)
             cursor.execute("""
                 DELETE FROM wash_services
                 WHERE wash_id = %s AND service_id IN (
-                    SELECT service_id FROM services WHERE is_adjustment = 1
+                    SELECT service_id FROM services
+                    WHERE COALESCE(is_adjustment, 0) = 1
                 )
             """, (wash_id,))
 
-            # 3. Insert the new adjustment line, if any
+            # 3. Insert new adjustment if any
             if extra_amount > 0 and extra_type in ("payment", "tip"):
                 service_name = "Extra Payment" if extra_type == "payment" else "Staff Tip"
-                cursor.execute("SELECT service_id, commission_rule FROM services WHERE name = %s", (service_name,))
+
+                cursor.execute("""
+                    SELECT service_id,
+                           COALESCE(commission_type, 'full') as commission_type,
+                           COALESCE(commission_value, 100) as commission_value
+                    FROM services
+                    WHERE name = %s AND shop_id = %s
+                """, (service_name, shop_id))
                 adj_service = cursor.fetchone()
+
+                if not adj_service:
+                    cursor.execute("""
+                        SELECT service_id,
+                               COALESCE(commission_type, 'full') as commission_type,
+                               COALESCE(commission_value, 100) as commission_value
+                        FROM services
+                        WHERE name = %s
+                        ORDER BY service_id
+                        LIMIT 1
+                    """, (service_name,))
+                    adj_service = cursor.fetchone()
+
                 if adj_service:
                     commission = compute_commission(
-                        s.get("commission_type", "percentage"),
-                        s.get("commission_value", 30),
-                        s["amount"]
+                        adj_service["commission_type"],
+                        adj_service["commission_value"],
+                        extra_amount
                     )
-            cursor.execute("""
-                INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
-                VALUES (%s, %s, %s, %s)
-             """, (wash_id, adj_service["service_id"], extra_amount, commission))
+                    cursor.execute("""
+                        INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
+                        VALUES (%s, %s, %s, %s)
+                    """, (wash_id, adj_service["service_id"], extra_amount, commission))
+                else:
+                    flash(f"Service '{service_name}' not found. Add it under Manage Types & Services.", "danger")
 
-            # 4. Recompute total_amount from the actual line items — never typed directly
-            cursor.execute("SELECT COALESCE(SUM(amount), 0) as total FROM wash_services WHERE wash_id = %s", (wash_id,))
+            # 4. Recompute total from line items
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) as total
+                FROM wash_services WHERE wash_id = %s
+            """, (wash_id,))
             new_total = cursor.fetchone()["total"]
 
             note_parts = []
@@ -1535,9 +1573,11 @@ def edit_wash(wash_id):
             cursor.close()
             conn.close()
             return redirect(url_for("wash_details", wash_id=wash_id))
+
         except Exception as e:
             conn.rollback()
             flash(f"Error updating wash: {e}", "danger")
+            print(f"edit_wash error: {e}")
 
     # ---- GET (or POST that hit an error and fell through) ----
     cursor.execute("""
