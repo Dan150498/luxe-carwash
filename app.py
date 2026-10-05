@@ -2031,10 +2031,10 @@ def request_extra(wash_id):
 
 @app.route("/extra-approvals", methods=["GET", "POST"])
 def extra_approvals():
-
     if "user_id" not in session or session["role"] != "admin":
         return redirect(url_for("login"))
 
+    shop_id = current_shop_id()
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -2043,14 +2043,16 @@ def extra_approvals():
         action = request.form.get("action")
         admin_note = request.form.get("admin_note", "").strip()
 
-        cursor.execute("SELECT * FROM wash_edit_requests WHERE request_id = %s AND status = 'pending'", (request_id,))
+        cursor.execute("""
+            SELECT * FROM wash_edit_requests
+            WHERE request_id = %s AND status = 'pending'
+        """, (request_id,))
         req = cursor.fetchone()
 
         if req:
             if action == "approve":
-                # Apply the extra to the wash
-        shop_id = current_shop_id()
                 service_name = "Extra Payment" if req["extra_type"] == "payment" else "Staff Tip"
+
                 cursor.execute("""
                     SELECT service_id,
                            COALESCE(commission_type, 'full') as commission_type,
@@ -2078,22 +2080,23 @@ def extra_approvals():
                         service["commission_value"],
                         req["extra_amount"]
                     )
-
                     cursor.execute("""
                         INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
                         VALUES (%s, %s, %s, %s)
                     """, (req["wash_id"], service["service_id"], req["extra_amount"], commission))
 
-                    # Update wash total
                     cursor.execute("""
-                        UPDATE washes 
+                        UPDATE washes
                         SET total_amount = total_amount + %s
                         WHERE wash_id = %s
                     """, (req["extra_amount"], req["wash_id"]))
 
                 cursor.execute("""
                     UPDATE wash_edit_requests
-                    SET status = 'approved', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP, admin_note = %s
+                    SET status = 'approved',
+                        reviewed_by = %s,
+                        reviewed_at = CURRENT_TIMESTAMP,
+                        admin_note = %s
                     WHERE request_id = %s
                 """, (session["user_id"], admin_note, request_id))
                 flash("Extra approved and applied to the wash!", "success")
@@ -2101,16 +2104,18 @@ def extra_approvals():
             elif action == "reject":
                 cursor.execute("""
                     UPDATE wash_edit_requests
-                    SET status = 'rejected', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP, admin_note = %s
+                    SET status = 'rejected',
+                        reviewed_by = %s,
+                        reviewed_at = CURRENT_TIMESTAMP,
+                        admin_note = %s
                     WHERE request_id = %s
                 """, (session["user_id"], admin_note, request_id))
                 flash("Request rejected.", "info")
 
             conn.commit()
 
-    # Get pending requests
     cursor.execute("""
-        SELECT 
+        SELECT
             r.*,
             w.registration_number,
             w.total_amount as current_total,
@@ -2121,8 +2126,9 @@ def extra_approvals():
         JOIN staff s ON w.staff_id = s.staff_id
         JOIN users u ON r.requested_by = u.user_id
         WHERE r.status = 'pending'
+          AND w.shop_id = %s
         ORDER BY r.requested_at DESC
-    """)
+    """, (shop_id,))
     pending = cursor.fetchall()
 
     cursor.close()
