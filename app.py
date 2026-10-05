@@ -2043,90 +2043,73 @@ def extra_approvals():
         action = request.form.get("action")
         admin_note = request.form.get("admin_note", "").strip()
 
-        cursor.execute(
-            "SELECT * FROM wash_edit_requests WHERE request_id = %s AND status = 'pending'",
-            (request_id,)
-        )
+        cursor.execute("SELECT * FROM wash_edit_requests WHERE request_id = %s AND status = 'pending'", (request_id,))
         req = cursor.fetchone()
 
         if req:
             if action == "approve":
                 # Apply the extra to the wash
-                service_name = (
-                    "Extra Payment"
-                    if req["extra_type"] == "payment"
-                    else "Staff Tip"
-                )
-
-                cursor.execute(
-                    "SELECT service_id, commission_rule FROM services WHERE name = %s",
-                    (service_name,)
-                )
+                service_name = "Extra Payment" if req["extra_type"] == "payment" else "Staff Tip"
+                cursor.execute("""
+                    SELECT service_id,
+                           COALESCE(commission_type, 'full') as commission_type,
+                           COALESCE(commission_value, 100) as commission_value
+                    FROM services
+                    WHERE name = %s AND shop_id = %s
+                """, (service_name, shop_id))
                 service = cursor.fetchone()
+
+                if not service:
+                    cursor.execute("""
+                        SELECT service_id,
+                               COALESCE(commission_type, 'full') as commission_type,
+                               COALESCE(commission_value, 100) as commission_value
+                        FROM services
+                        WHERE name = %s
+                        ORDER BY service_id
+                        LIMIT 1
+                    """, (service_name,))
+                    service = cursor.fetchone()
 
                 if service:
                     commission = compute_commission(
-                        service["commission_rule"],
+                        service["commission_type"],
+                        service["commission_value"],
                         req["extra_amount"]
                     )
 
                     cursor.execute("""
-                        INSERT INTO wash_services
-                            (wash_id, service_id, amount, commission_amount)
+                        INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
                         VALUES (%s, %s, %s, %s)
-                    """, (
-                        req["wash_id"],
-                        service["service_id"],
-                        req["extra_amount"],
-                        commission
-                    ))
+                    """, (req["wash_id"], service["service_id"], req["extra_amount"], commission))
 
                     # Update wash total
                     cursor.execute("""
-                        UPDATE washes
+                        UPDATE washes 
                         SET total_amount = total_amount + %s
                         WHERE wash_id = %s
-                    """, (
-                        req["extra_amount"],
-                        req["wash_id"]
-                    ))
+                    """, (req["extra_amount"], req["wash_id"]))
 
                 cursor.execute("""
                     UPDATE wash_edit_requests
-                    SET status = 'approved',
-                        reviewed_by = %s,
-                        reviewed_at = CURRENT_TIMESTAMP,
-                        admin_note = %s
+                    SET status = 'approved', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP, admin_note = %s
                     WHERE request_id = %s
-                """, (
-                    session["user_id"],
-                    admin_note,
-                    request_id
-                ))
-
+                """, (session["user_id"], admin_note, request_id))
                 flash("Extra approved and applied to the wash!", "success")
 
             elif action == "reject":
                 cursor.execute("""
                     UPDATE wash_edit_requests
-                    SET status = 'rejected',
-                        reviewed_by = %s,
-                        reviewed_at = CURRENT_TIMESTAMP,
-                        admin_note = %s
+                    SET status = 'rejected', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP, admin_note = %s
                     WHERE request_id = %s
-                """, (
-                    session["user_id"],
-                    admin_note,
-                    request_id
-                ))
-
+                """, (session["user_id"], admin_note, request_id))
                 flash("Request rejected.", "info")
 
             conn.commit()
 
     # Get pending requests
     cursor.execute("""
-        SELECT
+        SELECT 
             r.*,
             w.registration_number,
             w.total_amount as current_total,
@@ -2139,16 +2122,12 @@ def extra_approvals():
         WHERE r.status = 'pending'
         ORDER BY r.requested_at DESC
     """)
-
     pending = cursor.fetchall()
 
     cursor.close()
     conn.close()
 
-    return render_template(
-        "extra_approvals.html",
-        pending=pending
-    )
+    return render_template("extra_approvals.html", pending=pending)
 
 @app.route("/setup-split-payment")
 def setup_split_payment():
