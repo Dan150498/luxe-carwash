@@ -1456,7 +1456,7 @@ def edit_wash(wash_id):
         old_vehicle_type_id = str(existing_wash["vehicle_type_id"])
         vehicle_changed = str(vehicle_type_id) != old_vehicle_type_id
 
-                try:
+        try:
             shop_id = current_shop_id()
 
             # 1. Reprice existing (non-adjustment) services if vehicle type changed
