@@ -3838,6 +3838,18 @@ def create_shop():
                     """, (new_shop_id, feature))
 
                 # NO copy of types/services/prices — shop starts empty
+                                # Default adjustment services (extra / tip)
+                adjustment_services = [
+                    ("Extra Payment", "full", 100, 1),
+                    ("Staff Tip", "full", 100, 1),
+                ]
+                for name, ctype, cval, is_adj in adjustment_services:
+                    cursor.execute("""
+                        INSERT INTO services
+                        (name, is_package, commission_rule, commission_type, commission_value, is_adjustment, shop_id)
+                        VALUES (%s, 0, %s, %s, %s, %s, %s)
+                        ON CONFLICT DO NOTHING
+                    """, (name, "full", ctype, cval, is_adj, new_shop_id))
                 conn.commit()
 
                 log_audit(
@@ -4265,6 +4277,37 @@ def setup_commission_config():
     conn.close()
     return result
 
+@app.route("/setup-adjustment-services")
+def setup_adjustment_services():
+    if not require_setup_access():
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    messages = []
+    try:
+        cursor.execute("SELECT shop_id FROM shops")
+        shops = [r[0] for r in cursor.fetchall()]
+        for sid in shops:
+            for name, ctype, cval in (("Extra Payment", "full", 100), ("Staff Tip", "full", 100)):
+                cursor.execute("""
+                    SELECT 1 FROM services WHERE name = %s AND shop_id = %s
+                """, (name, sid))
+                if not cursor.fetchone():
+                    cursor.execute("""
+                        INSERT INTO services
+                        (name, is_package, commission_rule, commission_type, commission_value, is_adjustment, shop_id)
+                        VALUES (%s, 0, 'full', %s, %s, 1, %s)
+                    """, (name, ctype, cval, sid))
+                    messages.append(f"shop {sid}: added {name}")
+        conn.commit()
+        result = "OK<br>" + "<br>".join(messages) if messages else "All shops already had adjustment services"
+    except Exception as e:
+        conn.rollback()
+        result = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return result
 
 #==============================================superadmin=====================================================
 @app.route("/setup-superadmin")
