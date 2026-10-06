@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Audit Log - OshaSmart{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>Audit Log</h2>
+    <p style="color:#888;">Last 200 actions</p>
+    <a href="{{ url_for('platform_dashboard') }}" class="btn" style="margin-bottom:16px; background:#333;">Back</a>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>When</th>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Details</th>
+                    <th>Shop ID</th>
+                    <th>IP</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for l in logs %}
+                <tr>
+                    <td>{{ l.created_at }}</td>
+                    <td>{{ l.username or '-' }}</td>
+                    <td>{{ l.action }}</td>
+                    <td>{{ l.details or '-' }}</td>
+                    <td>{{ l.shop_id or '-' }}</td>
+                    <td>{{ l.ip_address or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" style="color:#888;">No entries yet</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
