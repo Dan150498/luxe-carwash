@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Cashiers - {{ current_shop_name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Cashiers</h2>
+    <p style="color:#888;">Users who can record washes for this shop only.</p>
+
+    <a href="{{ url_for('add_cashier') }}" class="btn" style="margin-bottom:20px;">+ Add Cashier</a>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Username</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in cashiers %}
+                <tr>
+                    <td>{{ c.full_name }}</td>
+                    <td>{{ c.username }}</td>
+                    <td>
+                        {% if c.is_active %}
+                            <span style="color:#4caf50;">Active</span>
+                        {% else %}
+                            <span style="color:#f44336;">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ c.created_at }}</td>
+                    <td>
+                        <a href="{{ url_for('toggle_cashier', user_id=c.user_id) }}"
+                           onclick="return confirm('{% if c.is_active %}Deactivate{% else %}Activate{% endif %} this cashier?')">
+                            {% if c.is_active %}Deactivate{% else %}Activate{% endif %}
+                        </a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" style="color:#888;">No cashiers yet. Add one.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
