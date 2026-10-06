@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Add Cashier{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:480px;">
+    <h2>Add Cashier</h2>
+    <form method="POST">
+        <div class="form-group">
+            <label>Full name</label>
+            <input type="text" name="full_name" required
+                   style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        </div>
+        <div class="form-group">
+            <label>Username (for login)</label>
+            <input type="text" name="username" required
+                   style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        </div>
+        <div class="form-group">
+            <label>Temporary password</label>
+            <input type="text" name="password" required minlength="6"
+                   style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        </div>
+        <button type="submit" class="btn">Create Cashier</button>
+        <a href="{{ url_for('manage_cashiers') }}" class="btn" style="background:#333;">Cancel</a>
+    </form>
+</div>
+{% endblock %}
