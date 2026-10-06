@@ -52,6 +52,7 @@
                     <a href="{{ url_for('create_shop') }}" class="nav-item"><i class="fas fa-plus-circle"></i> Create Shop </a>
                     <a href="{{ url_for('change_password') }}" class="nav-item"><i class="fas fa-key"></i> Change Password</a>
                     <a href="{{ url_for('platform_backup') }}" class="btn">Download Platform Backup</a>
+                    <a href="{{ url_for('platform_audit_log') }}" class="btn">Audit Log</a>
 
                 {% elif session.get('impersonator_id') %}
                     <div style="background:#d4af37; color:#000; padding:8px; text-align:center;">
@@ -83,6 +84,7 @@
                     {% endif %}
 
                     <div class="nav-section">INVENTORY</div>
+                    
                     {% if shop_has_feature(session.get('shop_id'), 'inventory_management') %}
                     <a href="{{ url_for('inventory_products') }}" class="nav-item"><i class="fas fa-box"></i> Products</a>
                     <a href="{{ url_for('stock_in') }}" class="nav-item"><i class="fas fa-dolly"></i> Stock In</a>
