@@ -4521,5 +4521,35 @@ def check_subscription_lock():
         flash("Your shop subscription needs attention. Contact OshaSmart.", "danger")
         return redirect(url_for("login"))
 
+@app.route("/setup-audit-log")
+def setup_audit_log():
+    if not require_setup_access():
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                log_id SERIAL PRIMARY KEY,
+                shop_id INTEGER,
+                user_id INTEGER,
+                username TEXT,
+                action TEXT NOT NULL,
+                details TEXT,
+                ip_address TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        msg = "audit_log table OK"
+    except Exception as e:
+        conn.rollback()
+        msg = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return msg
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
