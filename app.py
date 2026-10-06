@@ -1147,6 +1147,117 @@ def activate_staff(staff_id):
     flash("Staff activated.", "success")
     return redirect(url_for("manage_staff"))
 
+@app.route("/manage-cashiers")
+def manage_cashiers():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    shop_id = current_shop_id()
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("""
+        SELECT user_id, username, full_name, is_active, created_at
+        FROM users
+        WHERE shop_id = %s AND role = 'cashier'
+        ORDER BY full_name
+    """, (shop_id,))
+    cashiers = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return render_template("manage_cashiers.html", cashiers=cashiers)
+
+
+@app.route("/add-cashier", methods=["GET", "POST"])
+def add_cashier():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    shop_id = current_shop_id()
+
+    if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "").strip()
+
+        if not full_name or not username or not password:
+            flash("All fields are required.", "danger")
+            return render_template("add_cashier.html")
+
+        if len(password) < 6:
+            flash("Password must be at least 6 characters.", "danger")
+            return render_template("add_cashier.html")
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO users
+                (username, password_hash, full_name, role, is_active, shop_id, must_change_password)
+                VALUES (%s, %s, %s, 'cashier', 1, %s, 1)
+            """, (username, hash_password(password), full_name, shop_id))
+            conn.commit()
+
+            log_audit(
+                "add_cashier",
+                f"Added cashier '{username}' ({full_name})",
+                shop_id=shop_id
+            )
+
+            flash(f"Cashier '{full_name}' added. They should change password on first login.", "success")
+            cursor.close()
+            conn.close()
+            return redirect(url_for("manage_cashiers"))
+        except Exception as e:
+            conn.rollback()
+            cursor.close()
+            conn.close()
+            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                flash("Username already exists. Choose another.", "danger")
+            else:
+                flash(f"Error: {e}", "danger")
+            print(e)
+
+    return render_template("add_cashier.html")
+
+
+@app.route("/toggle-cashier/<int:user_id>")
+def toggle_cashier(user_id):
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    shop_id = current_shop_id()
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("""
+        SELECT user_id, username, is_active FROM users
+        WHERE user_id = %s AND shop_id = %s AND role = 'cashier'
+    """, (user_id, shop_id))
+    user = cursor.fetchone()
+
+    if not user:
+        cursor.close()
+        conn.close()
+        flash("Cashier not found.", "danger")
+        return redirect(url_for("manage_cashiers"))
+
+    new_status = 0 if user["is_active"] else 1
+    cursor.execute("""
+        UPDATE users SET is_active = %s
+        WHERE user_id = %s AND shop_id = %s
+    """, (new_status, user_id, shop_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    action = "activate_cashier" if new_status else "deactivate_cashier"
+    log_audit(action, f"Cashier {user['username']} is_active={new_status}", shop_id=shop_id)
+
+    flash("Cashier updated.", "success")
+    return redirect(url_for("manage_cashiers"))
+
 # ====================== CHANGE PRICES ======================
 @app.route("/change-prices", methods=["GET", "POST"])
 def change_prices():
