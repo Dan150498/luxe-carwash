@@ -102,6 +102,21 @@ def shop_subscription_ok(shop_id):
         return False
     return True
 
+def require_setup_access():
+    """
+    Allow setup routes only if:
+    - logged in as superadmin, OR
+    - ?token= matches SETUP_TOKEN env (or default for recovery)
+    """
+    token = request.args.get("token") or request.form.get("token")
+    expected = os.environ.get("SETUP_TOKEN", "oshasmart-setup-2026")
+
+    if token and token == expected:
+        return True
+    if session.get("role") == "superadmin":
+        return True
+    return False
+
 def get_connection():
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     return conn
@@ -1338,10 +1353,8 @@ def add_service():
 
 @app.route("/fix-vehicle-type-unique")
 def fix_vehicle_type_unique():
-    token = request.args.get("token")
-    if token != "oshasmart-setup-2026":
-        if "user_id" not in session or session.get("role") != "superadmin":
-            return "Unauthorized", 403
+    if not require_setup_access():
+        return "Unauthorized", 403
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -1639,25 +1652,6 @@ def delete_wash(wash_id):
     return redirect(url_for("search"))
 
 #============================== COMMISION==========================
-@app.route("/setup-commission")
-def setup_commission():
-    if "user_id" not in session or session["role"] != "admin":
-        return "Unauthorized", 403
-
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            ALTER TABLE wash_services 
-            ADD COLUMN IF NOT EXISTS commission_amount INTEGER DEFAULT 0
-        """)
-        conn.commit()
-        message = "Commission column added successfully!"
-    except Exception as e:
-        message = f"Error: {e}"
-    cursor.close()
-    conn.close()
-    return message
 
 @app.route("/commissions/daily")
 def daily_commissions():
@@ -2464,7 +2458,7 @@ def staff_dashboard():
 #==================================START WASH=====================
 @app.route("/setup-pending-wash")
 def setup_pending_wash():
-    if "user_id" not in session or session["role"] != "admin":
+    if not require_setup_access():
         return "Unauthorized", 403
 
     conn = get_connection()
@@ -2677,7 +2671,7 @@ def checkout(wash_id):
 #========================== INVENTORY     ====================
 @app.route("/setup-inventory")
 def setup_inventory():
-    if "user_id" not in session or session["role"] != "admin":
+    if not require_setup_access():
         return "Unauthorized", 403
 
     shop_id = current_shop_id()
@@ -3546,7 +3540,7 @@ def check_time():
 #=================================================MULTISHOP==================================================================
 @app.route("/setup-multishop")
 def setup_multishop():
-    if "user_id" not in session or session["role"] != "admin":
+    if not require_setup_access():
         return "Unauthorized", 403
 
     conn = get_connection()
@@ -3590,7 +3584,7 @@ def setup_multishop():
 
 @app.route("/setup-shop-ids")
 def setup_shop_ids():
-    if "user_id" not in session or session["role"] != "admin":
+    if not require_setup_access():
         return "Unauthorized", 403
 
     conn = get_connection()
@@ -3849,10 +3843,8 @@ def list_shops():
 
 @app.route("/setup-shop-unique-names")
 def setup_shop_unique_names():
-    token = request.args.get("token")
-    if token != "oshasmart-setup-2026":
-        if "user_id" not in session or session.get("role") != "superadmin":
-            return "Unauthorized. Use ?token=oshasmart-setup-2026", 403
+    if not require_setup_access():
+        return "Unauthorized", 403
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -4179,10 +4171,8 @@ def exit_shop():
 
 @app.route("/setup-commission-config")
 def setup_commission_config():
-    token = request.args.get("token")
-    if token != "oshasmart-setup-2026":
-        if "user_id" not in session or session.get("role") not in ("admin", "superadmin"):
-            return "Unauthorized", 403
+    if not require_setup_access():
+        return "Unauthorized", 403
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -4238,8 +4228,8 @@ def setup_superadmin():
     # Temporary token so this works even before superadmin exists
     token = request.args.get("token")
     if token != "oshasmart-setup-2026":
-        if "user_id" not in session or session.get("role") not in ("admin", "superadmin"):
-            return "Unauthorized. Use ?token=oshasmart-setup-2026", 403
+        if not require_setup_access():
+            return "Unauthorized.", 403
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -4346,11 +4336,9 @@ def platform_dashboard():
     )
 
 @app.route("/setup-platform-tools")
-def setup_platform_tools():
-    token = request.args.get("token")
-    if token != "oshasmart-setup-2026":
-        if "user_id" not in session or session.get("role") != "superadmin":
-            return "Unauthorized", 403
+def setup_platform_tools():   
+    if not require_setup_access():
+        return "Unauthorized", 403
 
     conn = get_connection()
     cursor = conn.cursor()
