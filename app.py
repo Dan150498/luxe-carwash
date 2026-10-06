@@ -117,9 +117,31 @@ def require_setup_access():
         return True
     return False
 
+def log_audit(action, details="", shop_id=None):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO audit_log (shop_id, user_id, username, action, details, ip_address)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            shop_id if shop_id is not None else session.get("shop_id"),
+            session.get("user_id"),
+            session.get("username") or session.get("full_name"),
+            action,
+            details,
+            request.remote_addr
+        ))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"audit log error: {e}")
+
 def get_connection():
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     return conn
+
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -380,7 +402,7 @@ def login():
 
             if user.get("staff_id"):
                 session["staff_id"] = user["staff_id"]
-###==================================or non-superadmin=====
+
             if user.get("must_change_password") == 1:
                 flash("You must change your password before continuing.", "info")
                 return redirect(url_for("change_password"))
@@ -1753,6 +1775,10 @@ def weekly_commissions():
                 """, (sid, shop_id, start_date, end_date))
 
         conn.commit()
+        log_audit(
+            "mark_commissions_paid",
+            f"Week {start_date} to {end_date}, staff_ids={staff_ids}"
+        )
         flash("Selected staff marked as Paid (advances deducted)!", "success")
 
     cursor.execute("""
@@ -2049,7 +2075,12 @@ def change_password():
             SET password_hash = %s, must_change_password = 0 
             WHERE user_id = %s
         """, (hash_password(new_password), session["user_id"]))
+
         conn.commit()
+        log_audit(
+                "reset_password",
+                f"Reset password for user_id={user_id} on shop_id={shop_id}",
+                shop_id=shop_id)
         cursor.close()
         conn.close()
 
@@ -3808,7 +3839,14 @@ def create_shop():
 
                 # NO copy of types/services/prices — shop starts empty
                 conn.commit()
-                flash(f"Shop '{name}' created (ID {new_shop_id}). Admin: {admin_username}. Shop starts empty.", "success")
+
+                log_audit(
+                    "create_shop",
+                    f"Created shop '{name}' (id={new_shop_id}), admin={admin_username}",
+                    shop_id=new_shop_id
+                )
+
+                flash(f"Shop '{name}' created ...", "success")
                 cursor.close()
                 conn.close()
                 return redirect(url_for("platform_dashboard"))
@@ -3933,6 +3971,9 @@ def deactivate_shop(shop_id):
         cursor.execute("UPDATE shops SET is_active = 0 WHERE shop_id = %s", (shop_id,))
         cursor.execute("UPDATE users SET is_active = 0 WHERE shop_id = %s", (shop_id,))
         conn.commit()
+
+        log_audit("deactivate_shop", f"Deactivated shop_id={shop_id}", shop_id=shop_id)
+
         flash("Shop deactivated.", "success")
     except Exception as e:
         conn.rollback()
@@ -3953,6 +3994,7 @@ def activate_shop(shop_id):
         cursor.execute("UPDATE shops SET is_active = 1 WHERE shop_id = %s", (shop_id,))
         cursor.execute("UPDATE users SET is_active = 1 WHERE shop_id = %s", (shop_id,))
         conn.commit()
+        log_audit("activate_shop", f"Activated shop_id={shop_id}", shop_id=shop_id)
         flash("Shop activated.", "success")
     except Exception as e:
         conn.rollback()
@@ -3987,7 +4029,9 @@ def delete_shop(shop_id):
         cursor.execute("DELETE FROM users WHERE shop_id = %s", (shop_id,))
         cursor.execute("DELETE FROM product_categories WHERE shop_id = %s", (shop_id,))
         cursor.execute("DELETE FROM shops WHERE shop_id = %s", (shop_id,))
+        
         conn.commit()
+        log_audit("delete_shop", f"Permanently deleted shop_id={shop_id}", shop_id=shop_id)
         flash("Shop deleted permanently.", "success")
     except Exception as e:
         conn.rollback()
@@ -4549,6 +4593,23 @@ def setup_audit_log():
     cursor.close()
     conn.close()
     return msg
+
+@app.route("/platform/audit-log")
+def platform_audit_log():
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("""
+        SELECT * FROM audit_log
+        ORDER BY created_at DESC
+        LIMIT 200
+    """)
+    logs = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template("platform_audit_log.html", logs=logs)
 
 
 if __name__ == "__main__":
