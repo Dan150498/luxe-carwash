@@ -434,108 +434,96 @@ def login():
         cursor.close()
         conn.close()
 
-        if user:
-            # --- Billing / inactive shop check (NOT for superadmin) ---
-            if user["role"] != "superadmin" and user.get("shop_id"):
-                conn2 = get_connection()
-                cur2 = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                cur2.execute("""
-                    SELECT is_active,
-                           COALESCE(subscription_status, 'active') as subscription_status,
-                           name
-                    FROM shops
-                    WHERE shop_id = %s
-                """, (user["shop_id"],))
-                shop = cur2.fetchone()
-                cur2.close()
-                conn2.close()
+        if not user:
+            flash("Invalid username or password", "danger")
+            return render_template("login.html")
 
-                if not shop or not shop["is_active"]:
-                    flash("This shop is inactive. Contact OshaSmart support.", "danger")
-                    return render_template("login.html")
-
-                if shop["subscription_status"] in ("past_due", "cancelled"):
-                    flash(
-                        f"Billing issue for {shop['name']}: subscription is {shop['subscription_status']}. "
-                        "Please contact OshaSmart to restore access.",
-                        "danger"
-                    )
-                    
-            if user:
-                if user["role"] != "superadmin" and user.get("shop_id"):
-                refresh_shop_expiry(user["shop_id"])
-
-                if not shop_subscription_ok(user["shop_id"]):
-                    flash(
-                        "This shop's subscription has expired or is inactive. "
-                        "Contact OshaSmart to renew.",
-                        "danger"
-                    )
-                    return render_template("login.html")
-
+        # --- Superadmin path (no shop checks) ---
+        if user["role"] == "superadmin":
             session["user_id"] = user["user_id"]
             session["username"] = user["username"]
             session["full_name"] = user["full_name"]
-            session["role"] = user["role"]
-            session["shop_id"] = user.get("shop_id") or 1   # Luxe default
+            session["role"] = "superadmin"
+            session["shop_id"] = None
             session.permanent = True
-
-            refresh_shop_expiry(user["shop_id"])
-
-            if not shop_subscription_ok(user["shop_id"]):
-                flash(
-                    "This shop's subscription has expired or is inactive. "
-                    "Contact OshaSmart to renew.",
-                    "danger"
-                )
-                return render_template("login.html")
-
-            
-
-            if user and user.get("shop_id"):
-                        conn2 = get_connection()
-                        cur2 = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                        cur2.execute("SELECT is_active FROM shops WHERE shop_id = %s", (user["shop_id"],))
-                        shop = cur2.fetchone()
-                        cur2.close()
-                        conn2.close()
-                        if shop and not shop["is_active"]:
-                            flash("This shop is currently inactive. Contact OshaSmart support.", "danger")
-                            return render_template("login.html")
-
-            if user.get("staff_id"):
-                session["staff_id"] = user["staff_id"]
 
             if user.get("must_change_password") == 1:
                 flash("You must change your password before continuing.", "info")
                 return redirect(url_for("change_password"))
 
             flash(f"Welcome, {user['full_name']}!", "success")
+            return redirect(url_for("platform_dashboard"))
 
+        # --- Regular users (must belong to a shop) ---
+        shop_id = user.get("shop_id")
+        if not shop_id:
+            flash("This account is not linked to any shop.", "danger")
+            return render_template("login.html")
 
-            if user["role"] == "superadmin":
-                
-                session["user_id"] = user["user_id"]
-                session["username"] = user["username"]
-                session["full_name"] = user["full_name"]
-                session["role"] = "superadmin"
-                session["shop_id"] = None   # platform level — no single shop
-                session.permanent = True
-                return redirect(url_for("platform_dashboard"))
+        # Check shop status + subscription
+        conn2 = get_connection()
+        cur2 = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur2.execute("""
+            SELECT is_active,
+                   COALESCE(subscription_status, 'active') as subscription_status,
+                   name
+            FROM shops
+            WHERE shop_id = %s
+        """, (shop_id,))
+        shop = cur2.fetchone()
+        cur2.close()
+        conn2.close()
 
-            elif user["role"] == "admin":
-                return redirect(url_for("dashboard"))
-            elif user["role"] == "cashier":
-                return redirect(url_for("cashier_home"))
-            elif user["role"] == "staff":
-                return redirect(url_for("staff_dashboard"))
-            else:
-                return redirect(url_for("login"))
+        if not shop or not shop["is_active"]:
+            flash("This shop is inactive. Contact OshaSmart support.", "danger")
+            return render_template("login.html")
+
+        if shop["subscription_status"] in ("past_due", "cancelled"):
+            flash(
+                f"Billing issue for {shop['name']}: subscription is {shop['subscription_status']}. "
+                "Please contact OshaSmart to restore access.",
+                "danger"
+            )
+            return render_template("login.html")
+
+        # Refresh expiry and do final subscription check
+        refresh_shop_expiry(shop_id)
+        if not shop_subscription_ok(shop_id):
+            flash(
+                "This shop's subscription has expired or is inactive. "
+                "Contact OshaSmart to renew.",
+                "danger"
+            )
+            return render_template("login.html")
+
+        # All checks passed → set session
+        session["user_id"] = user["user_id"]
+        session["username"] = user["username"]
+        session["full_name"] = user["full_name"]
+        session["role"] = user["role"]
+        session["shop_id"] = shop_id
+        session.permanent = True
+
+        if user.get("staff_id"):
+            session["staff_id"] = user["staff_id"]
+
+        if user.get("must_change_password") == 1:
+            flash("You must change your password before continuing.", "info")
+            return redirect(url_for("change_password"))
+
+        flash(f"Welcome, {user['full_name']}!", "success")
+
+        # Role-based redirect
+        if user["role"] == "admin":
+            return redirect(url_for("dashboard"))
+        elif user["role"] == "cashier":
+            return redirect(url_for("cashier_home"))
+        elif user["role"] == "staff":
+            return redirect(url_for("staff_dashboard"))
         else:
-            flash("Invalid username or password", "danger")
+            return redirect(url_for("login"))
 
     return render_template("login.html")
-
 
 @app.route("/logout")
 def logout():
