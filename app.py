@@ -56,8 +56,7 @@ app.secret_key = os.environ.get("SECRET_KEY", "change-this-in-production")
 
 MAX_LATE_WASH_DAYS = 3  # how many past days cashiers may request (not including today)
 
-min_date = today - timedelta(days=MAX_LATE_WASH_DAYS)
-max_date = today - timedelta(days=1)
+
 from datetime import timedelta
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=6)  # session expires after 6 hours
