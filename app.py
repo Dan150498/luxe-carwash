@@ -4838,6 +4838,49 @@ def platform_audit_log():
     conn.close()
     return render_template("platform_audit_log.html", logs=logs)
 
+@app.route("/setup-subscriptions")
+def setup_subscriptions():
+    if not require_setup_access():
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    messages = []
+    try:
+        cursor.execute("ALTER TABLE shops ADD COLUMN IF NOT EXISTS setup_fee INTEGER DEFAULT 0")
+        cursor.execute("ALTER TABLE shops ADD COLUMN IF NOT EXISTS setup_fee_paid INTEGER DEFAULT 0")
+        cursor.execute("ALTER TABLE shops ADD COLUMN IF NOT EXISTS monthly_fee INTEGER DEFAULT 0")
+        cursor.execute("ALTER TABLE shops ADD COLUMN IF NOT EXISTS subscription_start DATE")
+        cursor.execute("ALTER TABLE shops ADD COLUMN IF NOT EXISTS subscription_end DATE")
+        cursor.execute("ALTER TABLE shops ADD COLUMN IF NOT EXISTS billing_notes TEXT")
+        messages.append("shops billing columns OK")
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subscription_payments (
+                payment_id SERIAL PRIMARY KEY,
+                shop_id INTEGER REFERENCES shops(shop_id),
+                payment_type TEXT NOT NULL,  -- 'setup' | 'monthly'
+                amount INTEGER NOT NULL,
+                period_start DATE,
+                period_end DATE,
+                paid_on DATE DEFAULT CURRENT_DATE,
+                method TEXT,
+                reference TEXT,
+                recorded_by TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        messages.append("subscription_payments OK")
+
+        conn.commit()
+        result = "SUCCESS<br>" + "<br>".join(messages)
+    except Exception as e:
+        conn.rollback()
+        result = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return result
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
