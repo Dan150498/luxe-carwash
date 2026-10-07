@@ -71,6 +71,8 @@
                     <a href="{{ url_for('search') }}" class="nav-item"><i class="fas fa-search"></i> Search</a>
                     <a href="{{ url_for('weekly_wash_history') }}" class="nav-item"><i class="fas fa-calendar-week"></i> Weekly History</a>
                     <a href="{{ url_for('daily_report') }}" class="nav-item"><i class="fas fa-chart-pie"></i> Daily Report</a>
+                    <a href="{{ url_for('request_late_wash') }}" class="nav-item">Request Late Wash</a>
+                    <a href="{{ url_for('late_wash_approvals') }}" class="nav-item">Late Wash Approvals</a>
 
                     <div class="nav-section">COMMISSIONS</div>
                     <a href="{{ url_for('daily_commissions') }}" class="nav-item"><i class="fas fa-coins"></i> Daily Commissions</a>
@@ -113,6 +115,7 @@
                     <a href="{{ url_for('todays_washes') }}" class="nav-item"><i class="fas fa-list"></i> Today's Washes</a>
                     <a href="{{ url_for('search') }}" class="nav-item"><i class="fas fa-search"></i> Search</a>
                     <a href="{{ url_for('weekly_wash_history') }}" class="nav-item"><i class="fas fa-calendar-week"></i> Weekly History</a>
+                    <a href="{{ url_for('request_late_wash') }}" class="nav-item">Request Late Wash</a>
 
                     {% if shop_has_feature(session.get('shop_id'), 'inventory_management') %}
                     <a href="{{ url_for('sell_product') }}" class="nav-item"><i class="fas fa-shopping-cart"></i> Sell Product</a>

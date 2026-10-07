@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Request Late Wash{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:720px;">
+    <h2>Request Late Wash</h2>
+    <p style="color:#888;">
+        Use this when washes could not be recorded (system/network down).
+        Admin must approve before they appear on the report.
+        Allowed dates: <strong>{{ min_date }}</strong> to <strong>{{ max_date }}</strong> (not today).
+    </p>
+
+    <form method="POST" id="lateWashForm">
+        <div class="form-group">
+            <label>Intended wash date *</label>
+            <input type="date" name="intended_date" required
+                   min="{{ min_date }}" max="{{ max_date }}"
+                   style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>Car registration *</label>
+            <input type="text" name="registration" required placeholder="e.g. KDE 801F"
+                   style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px; text-transform:uppercase;">
+        </div>
+
+        <div class="form-group">
+            <label>Staff who washed *</label>
+            <select name="staff_id" required
+                    style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+                <option value="">-- Select staff --</option>
+                {% for s in staff %}
+                <option value="{{ s.staff_id }}">{{ s.full_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Vehicle type *</label>
+            <select name="vehicle_type_id" id="vehicleType" required
+                    style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+                <option value="">-- Select type --</option>
+                {% for v in vehicle_types %}
+                <option value="{{ v.vehicle_type_id }}">{{ v.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Services *</label>
+            <div id="servicesBox" style="background:#111; border:1px solid #333; border-radius:6px; padding:12px; min-height:48px; color:#888;">
+                Select a vehicle type first
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Cash (KSh)</label>
+            <input type="number" name="cash_amount" id="cashAmount" value="0" min="0"
+                   style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <div class="form-group">
+            <label>M-Pesa (KSh)</label>
+            <input type="number" name="mpesa_amount" id="mpesaAmount" value="0" min="0"
+                   style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        </div>
+
+        <p id="totalHint" style="color:#d4af37;">Total from services: KSh 0 — Cash + M-Pesa must match</p>
+
+        <div class="form-group">
+            <label>Reason * (e.g. system was down / no network)</label>
+            <textarea name="reason" required rows="3" placeholder="Explain why this was not recorded on the day"
+                      style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;"></textarea>
+        </div>
+
+        <button type="submit" class="btn">Send request to admin</button>
+        <a href="{{ url_for('cashier_home') if session.get('role') == 'cashier' else url_for('dashboard') }}"
+           class="btn" style="background:#333;">Cancel</a>
+    </form>
+</div>
+
+<script>
+let serviceTotal = 0;
+
+document.getElementById('vehicleType').addEventListener('change', function () {
+    const vt = this.value;
+    const box = document.getElementById('servicesBox');
+    serviceTotal = 0;
+    updateHint();
+
+    if (!vt) {
+        box.innerHTML = 'Select a vehicle type first';
+        box.style.color = '#888';
+        return;
+    }
+
+    box.innerHTML = 'Loading...';
+    fetch('/get-services/' + vt)
+        .then(r => r.json())
+        .then(data => {
+            if (!data || data.length === 0) {
+                box.innerHTML = 'No prices set for this vehicle type.';
+                box.style.color = '#888';
+                return;
+            }
+            box.style.color = '#fff';
+            box.innerHTML = data.map(s =>
+                `<label style="display:block; margin:8px 0;">
+                    <input type="checkbox" name="services" value="${s.service_id}" data-amount="${s.amount}"
+                           onchange="recalcTotal()">
+                    ${s.name} — KSh ${s.amount}
+                 </label>`
+            ).join('');
+        })
+        .catch(() => {
+            box.innerHTML = 'Could not load services.';
+            box.style.color = '#f44336';
+        });
+});
+
+function recalcTotal() {
+    serviceTotal = 0;
+    document.querySelectorAll('input[name="services"]:checked').forEach(cb => {
+        serviceTotal += parseInt(cb.getAttribute('data-amount') || '0', 10);
+    });
+    updateHint();
+}
+
+function updateHint() {
+    document.getElementById('totalHint').textContent =
+        'Total from services: KSh ' + serviceTotal + ' — Cash + M-Pesa must match';
+}
+</script>
+{% endblock %}

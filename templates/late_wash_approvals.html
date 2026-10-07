@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Late Wash Approvals{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Late Wash Approvals</h2>
+    <p style="color:#888;">Approve only if you confirm the wash really happened that day.</p>
+
+    {% if pending %}
+    {% for r in pending %}
+    <div style="background:#111; border:1px solid #333; border-radius:8px; padding:16px; margin-bottom:16px;">
+        <div style="display:flex; flex-wrap:wrap; gap:12px 24px; margin-bottom:10px;">
+            <div><span style="color:#888;">Date:</span> <strong style="color:#d4af37;">{{ r.intended_date }}</strong></div>
+            <div><span style="color:#888;">Reg:</span> <strong>{{ r.registration_number }}</strong></div>
+            <div><span style="color:#888;">Staff:</span> {{ r.staff_name or '-' }}</div>
+            <div><span style="color:#888;">Vehicle:</span> {{ r.vehicle_name or '-' }}</div>
+            <div><span style="color:#888;">Amount:</span> <strong>KSh {{ r.total_amount }}</strong></div>
+            <div><span style="color:#888;">Pay:</span> {{ r.payment_method }}
+                (Cash {{ r.cash_amount or 0 }} / M-Pesa {{ r.mpesa_amount or 0 }})</div>
+        </div>
+        <p style="margin:8px 0;"><span style="color:#888;">Reason:</span> {{ r.reason or '-' }}</p>
+        <p style="margin:8px 0; color:#888; font-size:0.9rem;">
+            Requested by {{ r.requested_by_name }} · {{ r.requested_at }}
+        </p>
+
+        <form method="POST" style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-top:12px;">
+            <input type="hidden" name="request_id" value="{{ r.request_id }}">
+            <div class="form-group" style="margin:0; flex:1; min-width:180px;">
+                <label>Admin note (optional)</label>
+                <input type="text" name="admin_note" placeholder="Optional note"
+                       style="width:100%; padding:10px; background:#0d0d0d; color:#fff; border:1px solid #333; border-radius:6px;">
+            </div>
+            <button type="submit" name="action" value="approve" class="btn"
+                    onclick="return confirm('Approve and add this wash to {{ r.intended_date }}?')">
+                Approve
+            </button>
+            <button type="submit" name="action" value="reject" class="btn" style="background:#f44336;"
+                    onclick="return confirm('Reject this request?')">
+                Reject
+            </button>
+        </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p style="color:#888;">No pending late wash requests.</p>
+    {% endif %}
+</div>
+{% endblock %}
