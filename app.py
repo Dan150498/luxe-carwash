@@ -153,59 +153,50 @@ def get_connection():
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     return conn
 
-def shop_subscription_ok(shop_id):
-    """False if inactive, cancelled, past_due, or subscription_end has passed."""
+def refresh_shop_expiry(shop_id):
+    """Mark shop as expired if subscription_end is before today."""
     if not shop_id:
-        return True  # superadmin
-
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
-        SELECT is_active,
-               COALESCE(subscription_status, 'active') as subscription_status,
-               subscription_end,
-               setup_fee_paid
-        FROM shops WHERE shop_id = %s
-    """, (shop_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-
-    if not row or not row["is_active"]:
-        return False
-
-    status = (row["subscription_status"] or "active").lower()
-    if status in ("past_due", "cancelled", "expired"):
-        return False
-
-    # Optional: require setup fee before first use
-    # if not row["setup_fee_paid"]:
-    #     return False
-
-    if row["subscription_end"]:
+        return
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
         today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
-        if row["subscription_end"] < today:
-            return False
+        cur.execute("""
+            UPDATE shops
+            SET subscription_status = 'expired'
+            WHERE shop_id = %s
+              AND subscription_end IS NOT NULL
+              AND subscription_end < %s
+              AND COALESCE(subscription_status, 'active') NOT IN ('cancelled')
+        """, (shop_id, today))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"refresh_shop_expiry error: {e}")
 
-    return True
 
 def shop_subscription_ok(shop_id):
-    """False if inactive, cancelled, past_due, or subscription_end has passed."""
+    """False if shop is inactive, cancelled, past_due, expired, or past subscription_end."""
     if not shop_id:
-        return True  # superadmin
+        return True  # superadmin / no shop
 
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
-        SELECT is_active,
-               COALESCE(subscription_status, 'active') as subscription_status,
-               subscription_end,
-               setup_fee_paid
-        FROM shops WHERE shop_id = %s
-    """, (shop_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT is_active,
+                   COALESCE(subscription_status, 'active') as subscription_status,
+                   subscription_end
+            FROM shops
+            WHERE shop_id = %s
+        """, (shop_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"shop_subscription_ok error: {e}")
+        return False
 
     if not row or not row["is_active"]:
         return False
@@ -214,11 +205,7 @@ def shop_subscription_ok(shop_id):
     if status in ("past_due", "cancelled", "expired"):
         return False
 
-    # Optional: require setup fee before first use
-    # if not row["setup_fee_paid"]:
-    #     return False
-
-    if row["subscription_end"]:
+    if row.get("subscription_end"):
         today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
         if row["subscription_end"] < today:
             return False
