@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Luxe Carwash{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    {# ===== BILLING / TRIAL BANNER — put it here ===== #}
+    {% if subscription_status == 'trial' and session.get('role') in ['admin', 'cashier'] %}
+    <div style="background:#ff9800; color:#000; padding:8px; text-align:center;">
+        Trial plan — upgrade before it ends. Contact OshaSmart for billing.
+    </div>
+    {% elif subscription_status == 'past_due' %}
+    <div style="background:#f44336; color:#fff; padding:8px; text-align:center;">
+        Payment past due — access may be limited. Contact OshaSmart.
+    </div>
+    {% endif %}
+
+    {# Support / impersonation banner (if you have it) #}
+    {% if session.get('impersonator_id') %}
+    <div style="background:#d4af37; color:#000; padding:8px; text-align:center;">
+        Support mode — viewing as shop admin
+        <a href="{{ url_for('exit_shop') }}" style="margin-left:12px; font-weight:bold; color:#000;">Exit Shop</a>
+    </div>
+    {% endif %}
+    
+    <div class="layout">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand" style="padding:16px; text-align:center;">
+                {% if shop_logo_url %}
+                    <img src="{{ shop_logo_url }}" alt="{{ current_shop_name }}"
+                        style="max-height:56px; max-width:160px; object-fit:contain;">
+                {% else %}
+                    <div style="color:#d4af37; font-weight:bold; font-size:1.15rem;">
+                        {{ current_shop_name or platform_name }}
+                    </div>
+                {% endif %}
+            </div>
+
+           <nav class="sidebar-nav">
+
+                {% if session.get('role') == 'superadmin' %}
+                    <div class="nav-section">PLATFORM</div>
+                    <a href="{{ url_for('platform_dashboard') }}" class="nav-item"><i class="fas fa-building"></i> All Shops</a>
+                    <a href="{{ url_for('create_shop') }}" class="nav-item"><i class="fas fa-plus-circle"></i> Create Shop </a>
+                    <a href="{{ url_for('change_password') }}" class="nav-item"><i class="fas fa-key"></i> Change Password</a>
+                    <a href="{{ url_for('platform_backup') }}" class="nav-item"><i class="fas fa-key"></i>">Download Platform Backup</a>
+                    <a href="{{ url_for('platform_audit_log') }}" class="btn">Audit Log</a>
+                    <a href="{{ url_for('shop_billing', shop_id=shop.shop_id) }}">Billing</a>
+
+                {% elif session.get('impersonator_id') %}
+                    <div style="background:#d4af37; color:#000; padding:8px; text-align:center;">
+                        Support mode — viewing as shop admin
+                        <a href="{{ url_for('exit_shop') }}" style="margin-left:12px; font-weight:bold; color:#000;">Exit Shop</a>
+                    </div>
+                    
+
+
+                {% elif session.get('role') == 'admin' %}
+
+                    <div class="nav-section">MAIN</div>
+                    <a href="{{ url_for('dashboard') }}" class="nav-item"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+                    <a href="{{ url_for('start_wash') }}" class="nav-item"><i class="fas fa-play-circle"></i> Start Wash</a>
+                    <a href="{{ url_for('pending_washes') }}" class="nav-item"><i class="fas fa-clock"></i> Pending Washes</a>
+                    <a href="{{ url_for('record_wash') }}" class="nav-item"><i class="fas fa-car"></i> Record Wash</a>
+                    <a href="{{ url_for('todays_washes') }}" class="nav-item"><i class="fas fa-list"></i> Today's Washes</a>
+                    <a href="{{ url_for('search') }}" class="nav-item"><i class="fas fa-search"></i> Search</a>
+                    <a href="{{ url_for('weekly_wash_history') }}" class="nav-item"><i class="fas fa-calendar-week"></i> Weekly History</a>
+                    <a href="{{ url_for('daily_report') }}" class="nav-item"><i class="fas fa-chart-pie"></i> Daily Report</a>
+
+                    <div class="nav-section">COMMISSIONS</div>
+                    <a href="{{ url_for('daily_commissions') }}" class="nav-item"><i class="fas fa-coins"></i> Daily Commissions</a>
+                    <a href="{{ url_for('weekly_commissions') }}" class="nav-item"><i class="fas fa-hand-holding-usd"></i> Weekly Payout</a>
+                    <a href="{{ url_for('staff_performance') }}" class="nav-item"><i class="fas fa-chart-line"></i> Performance</a>
+                    <a href="{{ url_for('staff_advances') }}" class="nav-item"><i class="fas fa-money-bill-wave"></i> Staff Advances </a>
+                    
+
+                    <div class="nav-section">INVENTORY</div>
+
+                    {% if shop_has_feature(session.get('shop_id'), 'inventory_management') %}
+                    <a href="{{ url_for('inventory_products') }}" class="nav-item"><i class="fas fa-box"></i> Products</a>
+                    <a href="{{ url_for('stock_in') }}" class="nav-item"><i class="fas fa-dolly"></i> Stock In</a>
+                    <a href="{{ url_for('sell_product') }}" class="nav-item"><i class="fas fa-shopping-cart"></i> Sell Product</a>
+                    <a href="{{ url_for('inventory_report') }}" class="nav-item"><i class="fas fa-clipboard-list"></i> Stock Report</a>
+                    <a href="{{ url_for('my_product_sales') }}" class="nav-item"><i class="fas fa-receipt"></i> Product Sales</a>
+                    {% endif %}
+
+                    <div class="nav-section">MANAGEMENT</div>
+                    <a href="{{ url_for('manage_staff') }}" class="nav-item"><i class="fas fa-users"></i> Manage Staff</a>
+                    <a href="{{ url_for('manage_cashiers') }}" class="nav-item">Cashiers</a>
+                    <a href="{{ url_for('change_prices') }}" class="nav-item"><i class="fas fa-tags"></i> Change Prices</a>
+                    <a href="{{ url_for('manage_types_services') }}" class="nav-item"><i class="fas fa-cogs"></i> Types & Services</a>
+                    <a href="{{ url_for('extra_approvals') }}" class="nav-item"><i class="fas fa-check-double"></i> Extra Approvals</a>
+                    <a href="{{ url_for('reports') }}" class="nav-item"><i class="fas fa-file-alt"></i> Reports</a>
+
+                    <a href="{{ url_for('backup_page') }}" class="nav-item"><i class="fas fa-database"></i> Database Backup</a>
+
+                    <a href="{{ url_for('shop_logo') }}" class="nav-item">Shop Logo</a>
+
+                    
+
+                {% elif session.get('role') == 'cashier' %}
+
+                    <div class="nav-section">MAIN</div>
+                    <a href="{{ url_for('cashier_home') }}" class="nav-item"><i class="fas fa-home"></i> Home</a>
+                    <a href="{{ url_for('start_wash') }}" class="nav-item"><i class="fas fa-play-circle"></i> Start Wash</a>
+                    <a href="{{ url_for('pending_washes') }}" class="nav-item"><i class="fas fa-clock"></i> Pending Washes</a>
+                    <a href="{{ url_for('record_wash') }}" class="nav-item"><i class="fas fa-car"></i> Record Wash</a>
+                    <a href="{{ url_for('todays_washes') }}" class="nav-item"><i class="fas fa-list"></i> Today's Washes</a>
+                    <a href="{{ url_for('search') }}" class="nav-item"><i class="fas fa-search"></i> Search</a>
+                    <a href="{{ url_for('weekly_wash_history') }}" class="nav-item"><i class="fas fa-calendar-week"></i> Weekly History</a>
+
+                    {% if shop_has_feature(session.get('shop_id'), 'inventory_management') %}
+                    <a href="{{ url_for('sell_product') }}" class="nav-item"><i class="fas fa-shopping-cart"></i> Sell Product</a>
+                    <a href="{{ url_for('my_product_sales') }}" class="nav-item"><i class="fas fa-receipt"></i> My Product Sales</a>
+                    {% endif %}
+
+                {% elif session.get('role') == 'staff' %}
+                    <a href="{{ url_for('staff_dashboard') }}" class="nav-item"><i class="fas fa-user"></i> My Dashboard</a>
+                    <a href="{{ url_for('weekly_wash_history') }}" class="nav-item"><i class="fas fa-calendar-week"></i> My Weekly History</a>
+                {% endif %}
+
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-name">{{ session.get('full_name') }}</div>
+                <a href="{{ url_for('change_password') }}" class="nav-item" style="margin-bottom:8px;">Change Password</a>
+                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+            <header class="topbar">
+                <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+                <div class="topbar-title">{% block page_title %}{% endblock %}</div>
+            </header>
+
+            <div class="content">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+        }
+    </script>
+</body>
+</html>
