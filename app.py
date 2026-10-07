@@ -27,6 +27,15 @@ def save_product_image(file):
         return f"/static/uploads/products/{filename}"
     return None
 
+def save_shop_logo(file):
+    if file and allowed_file(file.filename):
+        ext = file.filename.rsplit(".", 1)[1].lower()
+        filename = f"shop_{uuid.uuid4().hex}.{ext}"
+        filepath = os.path.join(SHOP_LOGO_FOLDER, filename)
+        file.save(filepath)
+        return f"/static/uploads/logos/{filename}"
+    return None
+
 # Kenyan timezone
 EAT = pytz.timezone("Africa/Nairobi")
 
@@ -52,6 +61,8 @@ from datetime import timedelta
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=6)  # session expires after 6 hours
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 
+SHOP_LOGO_FOLDER = os.path.join("static", "uploads", "logos")
+os.makedirs(SHOP_LOGO_FOLDER, exist_ok=True)
 
 UPLOAD_FOLDER = os.path.join("static", "uploads", "products")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
@@ -3872,31 +3883,38 @@ def check_shop():
 
 @app.context_processor
 def inject_shop():
-    shop_name = "Luxe Carwash"
+    shop_name = "OshaSmart"
+    shop_logo_url = None
     subscription_status = "active"
     shop_id = session.get("shop_id")
+
     if shop_id:
         try:
             conn = get_connection()
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute(
-                "SELECT name, COALESCE(subscription_status, 'active') as subscription_status FROM shops WHERE shop_id = %s",
-                (shop_id,)
-            )
+            cur.execute("""
+                SELECT name, logo_url,
+                       COALESCE(subscription_status, 'active') as subscription_status
+                FROM shops WHERE shop_id = %s
+            """, (shop_id,))
             row = cur.fetchone()
             if row:
                 shop_name = row["name"]
+                shop_logo_url = row.get("logo_url")
                 subscription_status = row["subscription_status"]
             cur.close()
             conn.close()
         except Exception:
             pass
+
     return {
         "current_shop_name": shop_name,
+        "shop_logo_url": shop_logo_url,
         "platform_name": "OshaSmart",
         "shop_has_feature": shop_has_feature,
         "subscription_status": subscription_status,
     }
+
 
 @app.route("/create-shop", methods=["GET", "POST"])
 def create_shop():
@@ -4419,6 +4437,61 @@ def setup_adjustment_services():
     cursor.close()
     conn.close()
     return result
+
+@app.route("/setup-shop-logo")
+def setup_shop_logo():
+    if not require_setup_access():
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            ALTER TABLE shops
+            ADD COLUMN IF NOT EXISTS logo_url TEXT
+        """)
+        conn.commit()
+        msg = "shops.logo_url column OK"
+    except Exception as e:
+        conn.rollback()
+        msg = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return msg
+
+@app.route("/shop-logo", methods=["GET", "POST"])
+def shop_logo():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    shop_id = current_shop_id()
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("SELECT shop_id, name, logo_url FROM shops WHERE shop_id = %s", (shop_id,))
+    shop = cursor.fetchone()
+
+    if request.method == "POST":
+        if "logo" not in request.files or not request.files["logo"].filename:
+            flash("Please choose an image file.", "danger")
+        else:
+            f = request.files["logo"]
+            url = save_shop_logo(f)
+            if not url:
+                flash("Invalid file. Use png, jpg, jpeg, gif, or webp.", "danger")
+            else:
+                cursor.execute("""
+                    UPDATE shops SET logo_url = %s WHERE shop_id = %s
+                """, (url, shop_id))
+                conn.commit()
+                log_audit("update_shop_logo", f"Updated logo for shop_id={shop_id}", shop_id=shop_id)
+                flash("Shop logo updated.", "success")
+                cursor.execute("SELECT shop_id, name, logo_url FROM shops WHERE shop_id = %s", (shop_id,))
+                shop = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+    return render_template("shop_logo.html", shop=shop)
 
 #==============================================superadmin=====================================================
 @app.route("/setup-superadmin")
