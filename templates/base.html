@@ -30,18 +30,15 @@
     <div class="layout">
         <!-- SIDEBAR -->
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
-                <div class="logo-area">
-                    <img src="{{ url_for('static', filename='images/logo.png') }}" 
-                        alt="Luxe Carwash" 
-                        class="logo-img"
-                        onerror="this.style.display='none'">
-                    <div class="logo-text">
-                        <span class="logo-title">{{ platform_name }}</span>
-                        <span class="logo-subtitle">{{ current_shop_name }}</span>
+            <div class="sidebar-brand" style="padding:16px; text-align:center;">
+                {% if shop_logo_url %}
+                    <img src="{{ shop_logo_url }}" alt="{{ current_shop_name }}"
+                        style="max-height:56px; max-width:160px; object-fit:contain;">
+                {% else %}
+                    <div style="color:#d4af37; font-weight:bold; font-size:1.15rem;">
+                        {{ current_shop_name or platform_name }}
                     </div>
-
-                </div>
+                {% endif %}
             </div>
 
            <nav class="sidebar-nav">
@@ -100,6 +97,8 @@
                     <a href="{{ url_for('reports') }}" class="nav-item"><i class="fas fa-file-alt"></i> Reports</a>
 
                     <a href="{{ url_for('backup_page') }}" class="nav-item"><i class="fas fa-database"></i> Database Backup</a>
+
+                    <a href="{{ url_for('shop_logo') }}" class="nav-item">Shop Logo</a>
 
                     
 

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Shop Logo{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:520px;">
+    <h2>Shop Logo</h2>
+    <p style="color:#888;">{{ shop.name }} — shown in the sidebar for your staff.</p>
+
+    {% if shop.logo_url %}
+    <div style="margin:20px 0;">
+        <img src="{{ shop.logo_url }}" alt="Current logo"
+             style="max-height:80px; max-width:100%; background:#111; padding:8px; border-radius:8px;">
+    </div>
+    {% else %}
+    <p style="color:#888;">No logo yet. Upload one below.</p>
+    {% endif %}
+
+    <form method="POST" enctype="multipart/form-data">
+        <div class="form-group">
+            <label>Choose image (PNG/JPG, max 5MB)</label>
+            <input type="file" name="logo" accept="image/*" required
+                   style="width:100%; padding:12px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        </div>
+        <button type="submit" class="btn">Upload Logo</button>
+        <a href="{{ url_for('dashboard') }}" class="btn" style="background:#333;">Back</a>
+    </form>
+</div>
+{% endblock %}
