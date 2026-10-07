@@ -153,6 +153,77 @@ def get_connection():
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     return conn
 
+def shop_subscription_ok(shop_id):
+    """False if inactive, cancelled, past_due, or subscription_end has passed."""
+    if not shop_id:
+        return True  # superadmin
+
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT is_active,
+               COALESCE(subscription_status, 'active') as subscription_status,
+               subscription_end,
+               setup_fee_paid
+        FROM shops WHERE shop_id = %s
+    """, (shop_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row or not row["is_active"]:
+        return False
+
+    status = (row["subscription_status"] or "active").lower()
+    if status in ("past_due", "cancelled", "expired"):
+        return False
+
+    # Optional: require setup fee before first use
+    # if not row["setup_fee_paid"]:
+    #     return False
+
+    if row["subscription_end"]:
+        today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+        if row["subscription_end"] < today:
+            return False
+
+    return True
+
+def shop_subscription_ok(shop_id):
+    """False if inactive, cancelled, past_due, or subscription_end has passed."""
+    if not shop_id:
+        return True  # superadmin
+
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT is_active,
+               COALESCE(subscription_status, 'active') as subscription_status,
+               subscription_end,
+               setup_fee_paid
+        FROM shops WHERE shop_id = %s
+    """, (shop_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row or not row["is_active"]:
+        return False
+
+    status = (row["subscription_status"] or "active").lower()
+    if status in ("past_due", "cancelled", "expired"):
+        return False
+
+    # Optional: require setup fee before first use
+    # if not row["setup_fee_paid"]:
+    #     return False
+
+    if row["subscription_end"]:
+        today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+        if row["subscription_end"] < today:
+            return False
+
+    return True
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -389,6 +460,17 @@ def login():
                         "Please contact OshaSmart to restore access.",
                         "danger"
                     )
+                    
+            if user:
+                if user["role"] != "superadmin" and user.get("shop_id"):
+                refresh_shop_expiry(user["shop_id"])
+
+                if not shop_subscription_ok(user["shop_id"]):
+                    flash(
+                        "This shop's subscription has expired or is inactive. "
+                        "Contact OshaSmart to renew.",
+                        "danger"
+                    )
                     return render_template("login.html")
 
             session["user_id"] = user["user_id"]
@@ -397,6 +479,16 @@ def login():
             session["role"] = user["role"]
             session["shop_id"] = user.get("shop_id") or 1   # Luxe default
             session.permanent = True
+
+            refresh_shop_expiry(user["shop_id"])
+
+            if not shop_subscription_ok(user["shop_id"]):
+                flash(
+                    "This shop's subscription has expired or is inactive. "
+                    "Contact OshaSmart to renew.",
+                    "danger"
+                )
+                return render_template("login.html")
 
             
 
@@ -422,6 +514,7 @@ def login():
 
 
             if user["role"] == "superadmin":
+                
                 session["user_id"] = user["user_id"]
                 session["username"] = user["username"]
                 session["full_name"] = user["full_name"]
@@ -4881,6 +4974,133 @@ def setup_subscriptions():
     cursor.close()
     conn.close()
     return result
+
+@app.route("/platform/shop/<int:shop_id>/billing", methods=["GET", "POST"])
+def shop_billing(shop_id):
+    if "user_id" not in session or session.get("role") != "superadmin":
+        return redirect(url_for("login"))
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("SELECT * FROM shops WHERE shop_id = %s", (shop_id,))
+    shop = cursor.fetchone()
+    if not shop:
+        cursor.close()
+        conn.close()
+        flash("Shop not found.", "danger")
+        return redirect(url_for("platform_dashboard"))
+
+    today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        try:
+            if action == "save_fees":
+                setup_fee = int(request.form.get("setup_fee") or 0)
+                monthly_fee = int(request.form.get("monthly_fee") or 0)
+                cursor.execute("""
+                    UPDATE shops SET setup_fee = %s, monthly_fee = %s WHERE shop_id = %s
+                """, (setup_fee, monthly_fee, shop_id))
+                conn.commit()
+                flash("Fees updated.", "success")
+
+            elif action == "record_setup":
+                amount = int(request.form.get("amount") or shop["setup_fee"] or 0)
+                method = request.form.get("method", "M-Pesa")
+                reference = request.form.get("reference", "").strip()
+                cursor.execute("""
+                    INSERT INTO subscription_payments
+                    (shop_id, payment_type, amount, paid_on, method, reference, recorded_by)
+                    VALUES (%s, 'setup', %s, %s, %s, %s, %s)
+                """, (shop_id, amount, today, method, reference, session.get("full_name")))
+                cursor.execute("""
+                    UPDATE shops SET setup_fee_paid = 1 WHERE shop_id = %s
+                """, (shop_id,))
+                conn.commit()
+                log_audit("subscription_setup_paid", f"shop={shop_id} amount={amount}", shop_id=shop_id)
+                flash("Setup fee recorded.", "success")
+
+            elif action == "record_monthly":
+                amount = int(request.form.get("amount") or shop["monthly_fee"] or 0)
+                method = request.form.get("method", "M-Pesa")
+                reference = request.form.get("reference", "").strip()
+                months = int(request.form.get("months") or 1)
+
+                # Extend from current end (if still in future) or from today
+                current_end = shop.get("subscription_end")
+                if current_end and current_end >= today:
+                    period_start = current_end + timedelta(days=1)
+                else:
+                    period_start = today
+
+                # Add ~1 month per unit (calendar-style: +30 days each, simple & clear)
+                period_end = period_start + timedelta(days=30 * months) - timedelta(days=1)
+
+                cursor.execute("""
+                    INSERT INTO subscription_payments
+                    (shop_id, payment_type, amount, period_start, period_end,
+                     paid_on, method, reference, recorded_by)
+                    VALUES (%s, 'monthly', %s, %s, %s, %s, %s, %s, %s)
+                """, (shop_id, amount, period_start, period_end, today,
+                      method, reference, session.get("full_name")))
+
+                cursor.execute("""
+                    UPDATE shops
+                    SET subscription_start = COALESCE(subscription_start, %s),
+                        subscription_end = %s,
+                        subscription_status = 'active',
+                        is_active = 1
+                    WHERE shop_id = %s
+                """, (period_start, period_end, shop_id))
+
+                # Reactivate users if they were locked
+                cursor.execute("""
+                    UPDATE users SET is_active = 1 WHERE shop_id = %s
+                """, (shop_id,))
+
+                conn.commit()
+                log_audit(
+                    "subscription_monthly_paid",
+                    f"shop={shop_id} amount={amount} until={period_end}",
+                    shop_id=shop_id
+                )
+                flash(f"Monthly payment recorded. Access until {period_end}.", "success")
+
+            elif action == "set_status":
+                status = request.form.get("subscription_status", "active")
+                cursor.execute("""
+                    UPDATE shops SET subscription_status = %s WHERE shop_id = %s
+                """, (status, shop_id))
+                conn.commit()
+                flash("Status updated.", "success")
+
+        except Exception as e:
+            conn.rollback()
+            flash(f"Error: {e}", "danger")
+            print(e)
+
+        cursor.execute("SELECT * FROM shops WHERE shop_id = %s", (shop_id,))
+        shop = cursor.fetchone()
+
+    cursor.execute("""
+        SELECT * FROM subscription_payments
+        WHERE shop_id = %s
+        ORDER BY paid_on DESC, payment_id DESC
+        LIMIT 50
+    """, (shop_id,))
+    payments = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "shop_billing.html",
+        shop=shop,
+        payments=payments,
+        today=today
+    )
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
