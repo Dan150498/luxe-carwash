@@ -23,7 +23,7 @@
     </div>
 
     <a href="{{ url_for('create_shop') }}" class="btn" style="margin-bottom:20px;">+ Create Shop</a>
-    <a href="{{ url_for('shop_billing', shop_id=s.shop_id) }}">Billing</a>
+    
 
     <div class="table-responsive">
         <table>
@@ -69,6 +69,8 @@
                     <a href="{{ url_for('edit_shop', shop_id=s.shop_id) }}">Edit</a> ·
                     <a href="{{ url_for('reset_shop_admin_password', shop_id=s.shop_id) }}">Reset PW</a> ·
                     <a href="{{ url_for('enter_shop', shop_id=s.shop_id) }}">Enter</a> ·
+                    <a href="{{ url_for('platform_shop_detail', shop_id=s.shop_id) }}">Details</a> ·
+                    <a href="{{ url_for('shop_billing', shop_id=s.shop_id) }}">Billing</a> ·
                     {% if s.is_active %}
                         <a href="{{ url_for('deactivate_shop', shop_id=s.shop_id) }}"
                         onclick="return confirm('Deactivate?')">Off</a>
