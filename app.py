@@ -985,6 +985,209 @@ def wash_details(wash_id):
 
     return render_template("wash_details.html", wash=wash, services=services)
 
+
+#=========================================================late wash========================================
+@app.route("/request-late-wash", methods=["GET", "POST"])
+def request_late_wash():
+    if "user_id" not in session or session["role"] not in ("admin", "cashier"):
+        return redirect(url_for("login"))
+
+    shop_id = current_shop_id()
+    today = get_kenya_today() if "get_kenya_today" in globals() else date.today()
+    min_date = today - timedelta(days=MAX_LATE_WASH_DAYS)
+    max_date = today - timedelta(days=1)  # cannot request "today" as late
+
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cursor.execute("""
+        SELECT staff_id, full_name FROM staff
+        WHERE is_active = 1 AND shop_id = %s ORDER BY full_name
+    """, (shop_id,))
+    staff = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT vehicle_type_id, name FROM vehicle_types
+        WHERE shop_id = %s ORDER BY name
+    """, (shop_id,))
+    vehicle_types = cursor.fetchall()
+
+    if request.method == "POST":
+        reg = request.form.get("registration", "").strip().upper()
+        staff_id = request.form.get("staff_id")
+        vehicle_type_id = request.form.get("vehicle_type_id")
+        selected_services = request.form.getlist("services")
+        reason = request.form.get("reason", "").strip()
+        intended_raw = request.form.get("intended_date", "").strip()
+        cash_raw = request.form.get("cash_amount", "0").strip()
+        mpesa_raw = request.form.get("mpesa_amount", "0").strip()
+
+        try:
+            intended_date = datetime.strptime(intended_raw, "%Y-%m-%d").date()
+        except ValueError:
+            intended_date = None
+
+        try:
+            cash_amount = int(cash_raw or 0)
+            mpesa_amount = int(mpesa_raw or 0)
+        except ValueError:
+            cash_amount = mpesa_amount = 0
+
+        if not reg or not staff_id or not vehicle_type_id or not selected_services or not reason:
+            flash("Fill all fields, select services, and give a reason.", "danger")
+        elif not intended_date or intended_date < min_date or intended_date > max_date:
+            flash(f"Date must be between {min_date} and {max_date} (not today).", "danger")
+        else:
+            total = 0
+            valid_ids = []
+            for sid in selected_services:
+                cursor.execute("""
+                    SELECT p.amount FROM prices p
+                    JOIN services s ON p.service_id = s.service_id
+                    WHERE p.vehicle_type_id = %s AND s.service_id = %s AND s.shop_id = %s
+                """, (vehicle_type_id, sid, shop_id))
+                row = cursor.fetchone()
+                if row:
+                    total += row["amount"]
+                    valid_ids.append(str(sid))
+
+            if not valid_ids or cash_amount + mpesa_amount != total:
+                flash(f"Services/prices invalid or Cash+M-Pesa must equal KSh {total}.", "danger")
+            else:
+                if cash_amount > 0 and mpesa_amount > 0:
+                    payment_method = "Mixed"
+                elif mpesa_amount > 0:
+                    payment_method = "M-Pesa"
+                else:
+                    payment_method = "Cash"
+
+                cursor.execute("""
+                    INSERT INTO late_wash_requests
+                    (shop_id, requested_by, intended_date, registration_number, staff_id,
+                     vehicle_type_id, service_ids, total_amount, payment_method,
+                     cash_amount, mpesa_amount, reason, status)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'pending')
+                """, (
+                    shop_id, session["user_id"], intended_date, reg, staff_id,
+                    vehicle_type_id, ",".join(valid_ids), total, payment_method,
+                    cash_amount, mpesa_amount, reason
+                ))
+                conn.commit()
+                log_audit("late_wash_request", f"{reg} on {intended_date}", shop_id=shop_id)
+                flash("Late wash request sent to admin for approval.", "success")
+                cursor.close()
+                conn.close()
+                return redirect(url_for("request_late_wash"))
+
+    cursor.close()
+    conn.close()
+    return render_template(
+        "request_late_wash.html",
+        staff=staff,
+        vehicle_types=vehicle_types,
+        min_date=min_date.isoformat(),
+        max_date=max_date.isoformat()
+    )
+
+@app.route("/late-wash-approvals", methods=["GET", "POST"])
+def late_wash_approvals():
+    if "user_id" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    shop_id = current_shop_id()
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        request_id = request.form.get("request_id")
+        action = request.form.get("action")
+        admin_note = request.form.get("admin_note", "").strip()
+
+        cursor.execute("""
+            SELECT * FROM late_wash_requests
+            WHERE request_id = %s AND shop_id = %s AND status = 'pending'
+        """, (request_id, shop_id))
+        req = cursor.fetchone()
+
+        if req and action == "approve":
+            try:
+                kenya_time = get_kenya_time() if "get_kenya_time" in globals() else datetime.now().time().replace(microsecond=0)
+                service_ids = [x for x in (req["service_ids"] or "").split(",") if x]
+
+                cursor.execute("""
+                    INSERT INTO washes
+                    (registration_number, staff_id, vehicle_type_id, total_amount,
+                     payment_method, cash_amount, mpesa_amount, status,
+                     wash_date, wash_time, shop_id, notes)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,'completed',%s,%s,%s,%s)
+                    RETURNING wash_id
+                """, (
+                    req["registration_number"], req["staff_id"], req["vehicle_type_id"],
+                    req["total_amount"], req["payment_method"], req["cash_amount"],
+                    req["mpesa_amount"], req["intended_date"], kenya_time, shop_id,
+                    f"Late entry approved. Reason: {req['reason'] or '-'}"
+                ))
+                wash_id = cursor.fetchone()["wash_id"]
+
+                for sid in service_ids:
+                    cursor.execute("""
+                        SELECT s.service_id,
+                               COALESCE(s.commission_type, 'percentage') as commission_type,
+                               COALESCE(s.commission_value, 30) as commission_value,
+                               p.amount
+                        FROM prices p
+                        JOIN services s ON p.service_id = s.service_id
+                        WHERE p.vehicle_type_id = %s AND s.service_id = %s AND s.shop_id = %s
+                    """, (req["vehicle_type_id"], sid, shop_id))
+                    srow = cursor.fetchone()
+                    if srow:
+                        commission = compute_commission(
+                            srow["commission_type"], srow["commission_value"], srow["amount"]
+                        )
+                        cursor.execute("""
+                            INSERT INTO wash_services (wash_id, service_id, amount, commission_amount)
+                            VALUES (%s, %s, %s, %s)
+                        """, (wash_id, srow["service_id"], srow["amount"], commission))
+
+                cursor.execute("""
+                    UPDATE late_wash_requests
+                    SET status = 'approved', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP,
+                        admin_note = %s, created_wash_id = %s
+                    WHERE request_id = %s
+                """, (session["user_id"], admin_note, wash_id, request_id))
+                conn.commit()
+                log_audit("late_wash_approved", f"request={request_id} wash_id={wash_id}", shop_id=shop_id)
+                flash(f"Approved. Wash #{wash_id} recorded for {req['intended_date']}.", "success")
+            except Exception as e:
+                conn.rollback()
+                flash(f"Error approving: {e}", "danger")
+                print(e)
+
+        elif req and action == "reject":
+            cursor.execute("""
+                UPDATE late_wash_requests
+                SET status = 'rejected', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP,
+                    admin_note = %s
+                WHERE request_id = %s
+            """, (session["user_id"], admin_note, request_id))
+            conn.commit()
+            flash("Request rejected.", "info")
+
+    cursor.execute("""
+        SELECT r.*, u.full_name as requested_by_name, st.full_name as staff_name, vt.name as vehicle_name
+        FROM late_wash_requests r
+        JOIN users u ON r.requested_by = u.user_id
+        LEFT JOIN staff st ON r.staff_id = st.staff_id
+        LEFT JOIN vehicle_types vt ON r.vehicle_type_id = vt.vehicle_type_id
+        WHERE r.shop_id = %s AND r.status = 'pending'
+        ORDER BY r.requested_at DESC
+    """, (shop_id,))
+    pending = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return render_template("late_wash_approvals.html", pending=pending)
+
 # ====================== REPORTS ======================
 @app.route("/reports", methods=["GET", "POST"])
 def reports():
