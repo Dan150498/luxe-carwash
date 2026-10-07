@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Billing - {{ shop.name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Billing — {{ shop.name }}</h2>
+    <p style="color:#888;">
+        Status: <strong>{{ shop.subscription_status or 'active' }}</strong> ·
+        Setup paid: <strong>{{ 'Yes' if shop.setup_fee_paid else 'No' }}</strong> ·
+        Valid until: <strong>{{ shop.subscription_end or 'Not set' }}</strong>
+    </p>
+
+    <a href="{{ url_for('platform_shop_detail', shop_id=shop.shop_id) }}" class="btn" style="background:#333; margin-bottom:20px;">Back</a>
+
+    <!-- Fees -->
+    <h3 style="color:#d4af37;">Fees</h3>
+    <form method="POST" style="margin-bottom:24px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <input type="hidden" name="action" value="save_fees">
+        <div>
+            <label>Setup fee (KSh)</label>
+            <input type="number" name="setup_fee" value="{{ shop.setup_fee or 0 }}" min="0"
+                   style="padding:10px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        </div>
+        <div>
+            <label>Monthly fee (KSh)</label>
+            <input type="number" name="monthly_fee" value="{{ shop.monthly_fee or 0 }}" min="0"
+                   style="padding:10px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        </div>
+        <button type="submit" class="btn">Save fees</button>
+    </form>
+
+    <!-- Record setup -->
+    <h3 style="color:#d4af37;">Record setup fee payment</h3>
+    <form method="POST" style="margin-bottom:24px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <input type="hidden" name="action" value="record_setup">
+        <input type="number" name="amount" value="{{ shop.setup_fee or 0 }}" placeholder="Amount"
+               style="padding:10px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        <input type="text" name="method" value="M-Pesa" placeholder="Method"
+               style="padding:10px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        <input type="text" name="reference" placeholder="M-Pesa code"
+               style="padding:10px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        <button type="submit" class="btn">Mark setup paid</button>
+    </form>
+
+    <!-- Record monthly -->
+    <h3 style="color:#d4af37;">Record monthly payment (extends access)</h3>
+    <form method="POST" style="margin-bottom:24px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <input type="hidden" name="action" value="record_monthly">
+        <input type="number" name="amount" value="{{ shop.monthly_fee or 0 }}" placeholder="Amount"
+               style="padding:10px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        <input type="number" name="months" value="1" min="1" max="12" title="Months to add"
+               style="padding:10px; width:80px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        <input type="text" name="method" value="M-Pesa"
+               style="padding:10px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        <input type="text" name="reference" placeholder="M-Pesa code"
+               style="padding:10px; background:#111; color:#fff; border:1px solid #333; border-radius:6px;">
+        <button type="submit" class="btn">Record & extend</button>
+    </form>
+
+    <h3 style="color:#d4af37;">Payment history</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Period</th>
+                <th>Method</th>
+                <th>Ref</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in payments %}
+            <tr>
+                <td>{{ p.paid_on }}</td>
+                <td>{{ p.payment_type }}</td>
+                <td>KSh {{ p.amount }}</td>
+                <td>{% if p.period_start %}{{ p.period_start }} → {{ p.period_end }}{% else %}—{% endif %}</td>
+                <td>{{ p.method or '-' }}</td>
+                <td>{{ p.reference or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" style="color:#888;">No payments yet</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
