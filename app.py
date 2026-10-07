@@ -765,6 +765,46 @@ def view_receipt(wash_id):
                            wash_date=wash["wash_date"],
                            wash_time=wash["wash_time"])
 
+@app.route("/setup-late-wash-requests")
+def setup_late_wash_requests():
+    if not require_setup_access():
+        return "Unauthorized", 403
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS late_wash_requests (
+                request_id SERIAL PRIMARY KEY,
+                shop_id INTEGER NOT NULL,
+                requested_by INTEGER REFERENCES users(user_id),
+                intended_date DATE NOT NULL,
+                registration_number TEXT NOT NULL,
+                staff_id INTEGER,
+                vehicle_type_id INTEGER,
+                service_ids TEXT NOT NULL,
+                total_amount INTEGER NOT NULL,
+                payment_method TEXT DEFAULT 'Cash',
+                cash_amount INTEGER DEFAULT 0,
+                mpesa_amount INTEGER DEFAULT 0,
+                reason TEXT,
+                status TEXT DEFAULT 'pending',
+                reviewed_by INTEGER,
+                reviewed_at TIMESTAMP,
+                admin_note TEXT,
+                created_wash_id INTEGER,
+                requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        msg = "late_wash_requests OK"
+    except Exception as e:
+        conn.rollback()
+        msg = f"Error: {e}"
+    cursor.close()
+    conn.close()
+    return msg
+
 # ====================== TODAY'S WASHES ======================
 @app.route("/todays-washes")
 def todays_washes():
